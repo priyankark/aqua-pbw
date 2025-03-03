@@ -1,0 +1,5 @@
+build/
+.lock-waf*
+.waf*
+*.pyc
+pebble-*.tar.gz
