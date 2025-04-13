@@ -5,6 +5,8 @@ typedef struct {
     GPoint pos;
     int direction;  // 1 for right, -1 for left
     int speed;
+    bool active;    // Whether the fish is alive/visible
+    int size;       // Size of the fish (1 = small, 2 = big)
 } Fish;
 
 typedef struct {
@@ -12,6 +14,27 @@ typedef struct {
     int offset;
     int speed;
 } Seaweed;
+
+typedef struct {
+    GPoint pos;
+    int size;
+    int speed;
+    bool active;
+} Bubble;
+
+typedef struct {
+    GPoint pos;
+    int direction;
+    int speed;
+    bool active;
+} Plankton;
+
+typedef struct {
+    GPoint pos;
+    int direction;   // 1 for right, -1 for left
+    int tentacle_offset;
+    int speed;
+} Octopus;
 
 // UI Elements
 static Window *s_main_window;
@@ -21,20 +44,28 @@ static TextLayer *s_date_layer;
 static Layer *s_battery_layer;
 
 // Animation elements
-#define MAX_FISH 3
+#define MAX_FISH 5         // Increased for more fish
+#define MAX_BIG_FISH 2     // Big fish that eat small fish
 #define MAX_SEAWEED 4
-static Fish s_fish[MAX_FISH];
+#define MAX_BUBBLES 8
+#define MAX_PLANKTON 6
+static Fish s_fish[MAX_FISH + MAX_BIG_FISH];  // Combined array for all fish
 static Seaweed s_seaweed[MAX_SEAWEED];
+static Bubble s_bubbles[MAX_BUBBLES];
+static Plankton s_plankton[MAX_PLANKTON];
+static Octopus s_octopus;
 
 // Update frequency
 #define ANIMATION_INTERVAL 50
 
 // Initialize a fish with random position and speed
-static void init_fish(Fish *fish) {
+static void init_fish(Fish *fish, int size) {
     fish->pos.y = 20 + (rand() % 100);
     fish->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
-    fish->speed = 2 + (rand() % 3);
+    fish->speed = size == 1 ? (2 + (rand() % 3)) : (1 + (rand() % 2));  // Big fish are slower
     fish->pos.x = (fish->direction == 1) ? -10 : 144;  // Use screen width constant
+    fish->active = true;
+    fish->size = size;
 }
 
 // Initialize seaweed with base position
@@ -45,22 +76,53 @@ static void init_seaweed(Seaweed *seaweed, int x) {
     seaweed->speed = 1 + (rand() % 2);
 }
 
+// Initialize bubble
+static void init_bubble(Bubble *bubble) {
+    bubble->pos.x = rand() % 144;  // Random x position
+    bubble->pos.y = 168;           // Start at bottom
+    bubble->size = 1 + (rand() % 3);
+    bubble->speed = 1 + (rand() % 3);
+    bubble->active = true;
+}
+
+// Initialize plankton
+static void init_plankton(Plankton *plankton) {
+    plankton->pos.x = rand() % 144;
+    plankton->pos.y = 20 + (rand() % 120);
+    plankton->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
+    plankton->speed = 1 + (rand() % 2);
+    plankton->active = true;
+}
+
+// Initialize octopus
+static void init_octopus(Octopus *octopus) {
+    octopus->pos.x = rand() % 70 + 37;  // Somewhere in the middle
+    octopus->pos.y = 140;               // Near the bottom
+    octopus->direction = (rand() % 2) * 2 - 1;
+    octopus->tentacle_offset = 0;
+    octopus->speed = 1;
+}
+
 // Draw fish
 static void draw_fish(GContext *ctx, const Fish *fish) {
+    if (!fish->active) return;
+    
     // Set fill color (white for B&W displays)
     graphics_context_set_fill_color(ctx, GColorWhite);
     
+    int size = fish->size == 1 ? 4 : 7;  // Size difference for big fish
+    
     // Fish body - using GPoint directly as required by Diorite
-    graphics_fill_circle(ctx, fish->pos, 4);
+    graphics_fill_circle(ctx, fish->pos, size);
     
     // Tail
     GPoint tail_points[3];
-    tail_points[0].x = fish->pos.x - (fish->direction * 4);
+    tail_points[0].x = fish->pos.x - (fish->direction * size);
     tail_points[0].y = fish->pos.y;
-    tail_points[1].x = fish->pos.x - (fish->direction * 8);
-    tail_points[1].y = fish->pos.y - 3;
-    tail_points[2].x = fish->pos.x - (fish->direction * 8);
-    tail_points[2].y = fish->pos.y + 3;
+    tail_points[1].x = fish->pos.x - (fish->direction * (size * 2));
+    tail_points[1].y = fish->pos.y - size;
+    tail_points[2].x = fish->pos.x - (fish->direction * (size * 2));
+    tail_points[2].y = fish->pos.y + size;
     
     // Create path for tail
     GPathInfo path_info;
@@ -70,6 +132,16 @@ static void draw_fish(GContext *ctx, const Fish *fish) {
     GPath *path = gpath_create(&path_info);
     gpath_draw_filled(ctx, path);
     gpath_destroy(path);
+    
+    // Add eye for big fish
+    if (fish->size > 1) {
+        graphics_context_set_fill_color(ctx, GColorBlack);
+        GPoint eye_pos = (GPoint){
+            fish->pos.x + (fish->direction * 3),
+            fish->pos.y - 2
+        };
+        graphics_fill_circle(ctx, eye_pos, 1);
+    }
 }
 
 // Draw seaweed
@@ -94,6 +166,75 @@ static void draw_seaweed(GContext *ctx, const Seaweed *seaweed) {
     }
 }
 
+// Draw bubble
+static void draw_bubble(GContext *ctx, const Bubble *bubble) {
+    if (!bubble->active) return;
+    
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    graphics_draw_circle(ctx, bubble->pos, bubble->size);
+}
+
+// Draw plankton
+static void draw_plankton(GContext *ctx, const Plankton *plankton) {
+    if (!plankton->active) return;
+    
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    
+    // Draw as a tiny dot/small shape
+    graphics_fill_circle(ctx, plankton->pos, 1);
+}
+
+// Draw octopus
+static void draw_octopus(GContext *ctx, const Octopus *octopus) {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    
+    // Draw head
+    graphics_fill_circle(ctx, octopus->pos, 6);
+    
+    // Draw eyes
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    GPoint left_eye = (GPoint){octopus->pos.x - 2, octopus->pos.y - 2};
+    GPoint right_eye = (GPoint){octopus->pos.x + 2, octopus->pos.y - 2};
+    graphics_fill_circle(ctx, left_eye, 1);
+    graphics_fill_circle(ctx, right_eye, 1);
+    
+    // Draw tentacles
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    
+    for (int i = 0; i < 8; i++) {
+        int32_t angle = (octopus->tentacle_offset + (i * TRIG_MAX_ANGLE / 8)) % TRIG_MAX_ANGLE;
+        int distance = 8;
+        
+        GPoint start = octopus->pos;
+        GPoint end;
+        
+        for (int j = 0; j < 3; j++) {
+            int32_t wave_angle = (octopus->tentacle_offset * 3 + (i * 500) + (j * 2000)) % TRIG_MAX_ANGLE;
+            int16_t wave_offset = (sin_lookup(wave_angle) * 3) / TRIG_MAX_RATIO;
+            
+            int32_t segment_angle = angle + (wave_offset * TRIG_MAX_ANGLE / 360);
+            
+            end.x = start.x + (sin_lookup(segment_angle) * distance) / TRIG_MAX_RATIO;
+            end.y = start.y + (cos_lookup(segment_angle) * distance) / TRIG_MAX_RATIO;
+            
+            graphics_draw_line(ctx, start, end);
+            start = end;
+            distance = j < 2 ? 6 : 4;  // Get shorter toward the end
+        }
+    }
+}
+
+// Check if two elements collide (basic circle collision)
+static bool check_collision(GPoint pos1, int radius1, GPoint pos2, int radius2) {
+    int dx = pos1.x - pos2.x;
+    int dy = pos1.y - pos2.y;
+    int distance_squared = (dx * dx) + (dy * dy);
+    int radius_sum = radius1 + radius2;
+    return distance_squared <= (radius_sum * radius_sum);
+}
+
 // Update canvas layer
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
     // Clear the screen (black for B&W displays)
@@ -106,10 +247,23 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
         draw_seaweed(ctx, &s_seaweed[i]);
     }
     
+    // Draw plankton
+    for (int i = 0; i < MAX_PLANKTON; i++) {
+        draw_plankton(ctx, &s_plankton[i]);
+    }
+    
     // Draw fish (foreground)
-    for (int i = 0; i < MAX_FISH; i++) {
+    for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
         draw_fish(ctx, &s_fish[i]);
     }
+    
+    // Draw bubbles
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        draw_bubble(ctx, &s_bubbles[i]);
+    }
+    
+    // Draw octopus
+    draw_octopus(ctx, &s_octopus);
 }
 
 // Battery layer update proc
@@ -143,14 +297,54 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
 
 // Animation update
 static void animation_update(void) {
-    // Update fish positions
-    for (int i = 0; i < MAX_FISH; i++) {
+    // Update fish positions and check for fish being eaten
+    for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
+        if (!s_fish[i].active) continue;
+        
         s_fish[i].pos.x += s_fish[i].direction * s_fish[i].speed;
         
         // Reset fish if it swims off screen
         if ((s_fish[i].direction == 1 && s_fish[i].pos.x > 144) ||  // Use screen width
             (s_fish[i].direction == -1 && s_fish[i].pos.x < -10)) {
-            init_fish(&s_fish[i]);
+            if (s_fish[i].size == 1) {
+                init_fish(&s_fish[i], 1);  // Reinitialize small fish
+            } else {
+                init_fish(&s_fish[i], 2);  // Reinitialize big fish
+            }
+        }
+        
+        // Big fish eat small fish
+        if (s_fish[i].size > 1) {  // If this is a big fish
+            for (int j = 0; j < MAX_FISH; j++) {  // Check all small fish
+                if (s_fish[j].active && s_fish[j].size == 1) {
+                    if (check_collision(s_fish[i].pos, 7, s_fish[j].pos, 4)) {
+                        s_fish[j].active = false;  // Small fish gets eaten
+                        
+                        // Create bubbles to mark the eating event
+                        for (int b = 0; b < 3; b++) {
+                            for (int k = 0; k < MAX_BUBBLES; k++) {
+                                if (!s_bubbles[k].active) {
+                                    s_bubbles[k].pos = s_fish[j].pos;
+                                    s_bubbles[k].size = 1 + (rand() % 2);
+                                    s_bubbles[k].speed = 1 + (rand() % 2);
+                                    s_bubbles[k].active = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Respawn the eaten fish after a short delay (handled elsewhere)
+                        // We'll use the inactive state as a marker for respawn logic
+                    }
+                }
+            }
+        }
+    }
+    
+    // Check for respawning fish
+    for (int i = 0; i < MAX_FISH; i++) {
+        if (!s_fish[i].active && (rand() % 50) == 0) {
+            init_fish(&s_fish[i], 1);  // Reinitialize with size 1 (small fish)
         }
     }
     
@@ -160,6 +354,59 @@ static void animation_update(void) {
         if (s_seaweed[i].offset >= TRIG_MAX_ANGLE) {
             s_seaweed[i].offset -= TRIG_MAX_ANGLE;
         }
+    }
+    
+    // Update bubbles
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (s_bubbles[i].active) {
+            s_bubbles[i].pos.y -= s_bubbles[i].speed;
+            
+            // Slight x wobble
+            if (rand() % 3 == 0) {
+                s_bubbles[i].pos.x += (rand() % 3) - 1;
+            }
+            
+            // Remove bubble when it reaches the top
+            if (s_bubbles[i].pos.y < 0) {
+                s_bubbles[i].active = false;
+            }
+        } else if (rand() % 100 < 2) {  // 2% chance to create a new bubble
+            init_bubble(&s_bubbles[i]);
+        }
+    }
+    
+    // Update plankton
+    for (int i = 0; i < MAX_PLANKTON; i++) {
+        if (s_plankton[i].active) {
+            // Random movement for plankton
+            if (rand() % 4 == 0) {
+                s_plankton[i].pos.x += (rand() % 3) - 1;
+                s_plankton[i].pos.y += (rand() % 3) - 1;
+            }
+            
+            // Keep plankton in bounds
+            if (s_plankton[i].pos.x < 0) s_plankton[i].pos.x = 0;
+            if (s_plankton[i].pos.x > 144) s_plankton[i].pos.x = 144;
+            if (s_plankton[i].pos.y < 0) s_plankton[i].pos.y = 0;
+            if (s_plankton[i].pos.y > 168) s_plankton[i].pos.y = 168;
+        } else if (rand() % 100 < 3) {  // 3% chance to create new plankton
+            init_plankton(&s_plankton[i]);
+        }
+    }
+    
+    // Update octopus
+    s_octopus.tentacle_offset += s_octopus.speed * 50;
+    if (s_octopus.tentacle_offset >= TRIG_MAX_ANGLE) {
+        s_octopus.tentacle_offset -= TRIG_MAX_ANGLE;
+    }
+    
+    // Slow movement for octopus
+    if (rand() % 10 == 0) {
+        s_octopus.pos.x += (rand() % 3) - 1;
+        
+        // Keep octopus in bounds
+        if (s_octopus.pos.x < 10) s_octopus.pos.x = 10;
+        if (s_octopus.pos.x > 134) s_octopus.pos.x = 134;
     }
     
     layer_mark_dirty(s_canvas_layer);
@@ -238,15 +485,37 @@ static void main_window_load(Window *window) {
     layer_set_update_proc(s_battery_layer, battery_update_proc);
     layer_add_child(window_layer, s_battery_layer);
     
-    // Initialize fish
+    // Initialize small fish
     for (int i = 0; i < MAX_FISH; i++) {
-        init_fish(&s_fish[i]);
+        init_fish(&s_fish[i], 1);  // Small fish
+    }
+    
+    // Initialize big fish
+    for (int i = MAX_FISH; i < MAX_FISH + MAX_BIG_FISH; i++) {
+        init_fish(&s_fish[i], 2);  // Big fish
     }
     
     // Initialize seaweed
     for (int i = 0; i < MAX_SEAWEED; i++) {
         init_seaweed(&s_seaweed[i], 20 + (i * 35));
     }
+    
+    // Initialize bubbles
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        s_bubbles[i].active = false;  // Start with no bubbles
+    }
+    
+    // Initialize plankton
+    for (int i = 0; i < MAX_PLANKTON; i++) {
+        if (rand() % 3 == 0) {  // Start with some plankton
+            init_plankton(&s_plankton[i]);
+        } else {
+            s_plankton[i].active = false;
+        }
+    }
+    
+    // Initialize octopus
+    init_octopus(&s_octopus);
     
     // Start animation timer
     app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
