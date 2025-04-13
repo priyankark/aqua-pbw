@@ -59,6 +59,13 @@ typedef struct {
     int timer;          // Countdown for appearance
 } Shark;
 
+typedef struct {
+    GPoint pos;
+    int curve_state;    // Animation for curved body
+    bool active;        // Only appears occasionally
+    int timer;          // Countdown for appearance/disappearance
+} Seahorse;
+
 // UI Elements
 static Window *s_main_window;
 static Layer *s_canvas_layer;
@@ -82,6 +89,7 @@ static Octopus s_octopus;
 static Turtle s_turtles[MAX_TURTLES];
 static Jellyfish s_jellyfish[MAX_JELLYFISH];
 static Shark s_shark;      // One shark is enough!
+static Seahorse s_seahorse; // One seahorse
 
 // Update frequency
 #define ANIMATION_INTERVAL 50
@@ -158,6 +166,24 @@ static void init_shark(Shark *shark) {
     shark->speed = 3;  // Sharks are fast!
     shark->active = false;  // Start inactive
     shark->timer = 150 + (rand() % 150);  // Reduced timer - appear more often (2.5-5 seconds)
+}
+
+// Initialize seahorse
+static void init_seahorse(Seahorse *seahorse) {
+    seahorse->pos.x = 20;  // Fixed position at left side
+    seahorse->pos.y = 140; // Bottom left corner
+    seahorse->curve_state = 0;
+    seahorse->active = true;
+    seahorse->timer = 0;   // Not used for disappearing anymore
+}
+
+// Update seahorse
+static void update_seahorse(Seahorse *seahorse) {
+    // Only animate the seahorse's body with gentle swaying
+    seahorse->curve_state = (seahorse->curve_state + 1) % TRIG_MAX_ANGLE;
+    
+    // Always keep active
+    seahorse->active = true;
 }
 
 // Draw fish
@@ -470,6 +496,143 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
                        (GPoint){shark->pos.x + (shark->direction * 6), shark->pos.y + 3});
 }
 
+// Draw seahorse
+static void draw_seahorse(GContext *ctx, const Seahorse *seahorse) {
+    if (!seahorse->active) return;
+    
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    
+    // Animate curve state for gentle swaying
+    int32_t curve_angle = seahorse->curve_state % TRIG_MAX_ANGLE;
+    int curve_offset = (sin_lookup(curve_angle) * 2) / TRIG_MAX_RATIO;
+    
+    // Draw the head - positioned upright like a real seahorse
+    GPoint head_pos = seahorse->pos;
+    graphics_fill_circle(ctx, head_pos, 5); // Clear seahorse head
+    
+    // Draw the snout - characteristic downward-facing seahorse snout
+    GPoint snout_start = (GPoint){head_pos.x, head_pos.y - 2};
+    GPoint snout_mid = (GPoint){head_pos.x + 3, head_pos.y + 1};
+    GPoint snout_end = (GPoint){head_pos.x + 6, head_pos.y + 3};
+    
+    graphics_context_set_stroke_width(ctx, 2);
+    graphics_draw_line(ctx, snout_start, snout_mid);
+    graphics_draw_line(ctx, snout_mid, snout_end);
+    
+    // Draw characteristic coronet/crest on top of head
+    GPoint crest[3] = {
+        {head_pos.x - 2, head_pos.y - 5},
+        {head_pos.x, head_pos.y - 8},
+        {head_pos.x + 2, head_pos.y - 5}
+    };
+    graphics_context_set_stroke_width(ctx, 1);
+    for (int i = 0; i < 2; i++) {
+        graphics_draw_line(ctx, crest[i], crest[i+1]);
+    }
+    
+    // Draw eye
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    GPoint eye_pos = (GPoint){head_pos.x + 2, head_pos.y - 1};
+    graphics_fill_circle(ctx, eye_pos, 1);
+    
+    // Draw the main body - more pronounced curve with segments
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    graphics_context_set_stroke_width(ctx, 3);
+    
+    // Set up body segments for a better seahorse curve
+    // Seahorses have a distinctive curved body that arches forward
+    GPoint body_segments[7]; // More points for better definition
+    body_segments[0] = head_pos;
+    
+    // Create a more accurate seahorse profile - arching forward with belly outward
+    body_segments[1].x = head_pos.x - 2;
+    body_segments[1].y = head_pos.y + 6;
+    
+    body_segments[2].x = head_pos.x - 4 + curve_offset;
+    body_segments[2].y = head_pos.y + 12;
+    
+    body_segments[3].x = head_pos.x - 2 + curve_offset;
+    body_segments[3].y = head_pos.y + 18;
+    
+    body_segments[4].x = head_pos.x;
+    body_segments[4].y = head_pos.y + 24;
+    
+    body_segments[5].x = head_pos.x + 2;
+    body_segments[5].y = head_pos.y + 30;
+    
+    body_segments[6].x = head_pos.x + 1 - curve_offset;
+    body_segments[6].y = head_pos.y + 35;
+    
+    // Draw the body segments
+    for (int i = 1; i < 7; i++) {
+        graphics_draw_line(ctx, body_segments[i-1], body_segments[i]);
+    }
+    
+    // Draw the characteristic segmented appearance
+    graphics_context_set_stroke_width(ctx, 1);
+    for (int i = 1; i < 6; i++) {
+        // Draw little ridges/bumps along the outer edge
+        GPoint bump1 = {
+            body_segments[i].x + 2,
+            body_segments[i].y - 1
+        };
+        GPoint bump2 = {
+            body_segments[i].x + 3,
+            body_segments[i].y
+        };
+        graphics_draw_line(ctx, body_segments[i], bump1);
+        graphics_draw_line(ctx, bump1, bump2);
+    }
+    
+    // Draw the curled tail - tightly curled at the end
+    GPoint tail_points[4];
+    tail_points[0] = body_segments[6];
+    tail_points[1].x = body_segments[6].x - 2;
+    tail_points[1].y = body_segments[6].y + 3;
+    tail_points[2].x = body_segments[6].x - 4;
+    tail_points[2].y = body_segments[6].y + 2;
+    tail_points[3].x = body_segments[6].x - 5;
+    tail_points[3].y = body_segments[6].y - 1;
+    
+    graphics_context_set_stroke_width(ctx, 2);
+    for (int i = 1; i < 4; i++) {
+        graphics_draw_line(ctx, tail_points[i-1], tail_points[i]);
+    }
+    
+    // Draw the characteristic bulging belly - seahorses have a distinct pouch
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    GPoint belly_center = (GPoint){
+        body_segments[3].x - 4,
+        body_segments[3].y
+    };
+    graphics_fill_circle(ctx, belly_center, 3);
+    
+    // Draw dorsal fin - on the back
+    graphics_context_set_stroke_width(ctx, 1);
+    GPoint dorsal_fin[3] = {
+        {body_segments[2].x, body_segments[2].y},
+        {body_segments[2].x - 4, body_segments[2].y - 5},
+        {body_segments[2].x + 2, body_segments[2].y - 2}
+    };
+    
+    for (int i = 0; i < 2; i++) {
+        graphics_draw_line(ctx, dorsal_fin[i], dorsal_fin[i+1]);
+    }
+    
+    // Draw pectoral fin - small fin behind head
+    GPoint pectoral_fin[3] = {
+        {body_segments[1].x, body_segments[1].y},
+        {body_segments[1].x - 3, body_segments[1].y - 2},
+        {body_segments[1].x - 1, body_segments[1].y + 2}
+    };
+    
+    for (int i = 0; i < 2; i++) {
+        graphics_draw_line(ctx, pectoral_fin[i], pectoral_fin[i+1]);
+    }
+}
+
 // Check if two elements collide (basic circle collision)
 static bool check_collision(GPoint pos1, int radius1, GPoint pos2, int radius2) {
     int dx = pos1.x - pos2.x;
@@ -505,6 +668,9 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     for (int i = 0; i < MAX_JELLYFISH; i++) {
         draw_jellyfish(ctx, &s_jellyfish[i]);
     }
+    
+    // Draw seahorse
+    draw_seahorse(ctx, &s_seahorse);
     
     // Draw fish (foreground)
     for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
@@ -748,6 +914,9 @@ static void animation_update(void) {
         }
     }
     
+    // Update seahorse - only animate, never disappear
+    update_seahorse(&s_seahorse);
+    
     layer_mark_dirty(s_canvas_layer);
 }
 
@@ -868,6 +1037,9 @@ static void main_window_load(Window *window) {
     
     // Initialize shark
     init_shark(&s_shark);
+    
+    // Initialize seahorse
+    init_seahorse(&s_seahorse);
     
     // Start animation timer
     app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
