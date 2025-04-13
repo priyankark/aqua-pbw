@@ -50,6 +50,15 @@ typedef struct {
     int speed;
 } Jellyfish;
 
+typedef struct {
+    GPoint pos;
+    int direction;      // 1 for right, -1 for left
+    int jaw_state;      // Animation state for opening/closing mouth
+    int speed;
+    bool active;        // Only appears occasionally
+    int timer;          // Countdown for appearance
+} Shark;
+
 // UI Elements
 static Window *s_main_window;
 static Layer *s_canvas_layer;
@@ -64,7 +73,7 @@ static Layer *s_battery_layer;
 #define MAX_BUBBLES 8
 #define MAX_PLANKTON 6
 #define MAX_TURTLES 1
-#define MAX_JELLYFISH 2
+#define MAX_JELLYFISH 1    // Reduced to one jellyfish
 static Fish s_fish[MAX_FISH + MAX_BIG_FISH];  // Combined array for all fish
 static Seaweed s_seaweed[MAX_SEAWEED];
 static Bubble s_bubbles[MAX_BUBBLES];
@@ -72,6 +81,7 @@ static Plankton s_plankton[MAX_PLANKTON];
 static Octopus s_octopus;
 static Turtle s_turtles[MAX_TURTLES];
 static Jellyfish s_jellyfish[MAX_JELLYFISH];
+static Shark s_shark;      // One shark is enough!
 
 // Update frequency
 #define ANIMATION_INTERVAL 50
@@ -132,11 +142,22 @@ static void init_turtle(Turtle *turtle) {
 
 // Initialize jellyfish
 static void init_jellyfish(Jellyfish *jellyfish) {
-    jellyfish->pos.x = 20 + (rand() % 104);  // Somewhere in the screen
-    jellyfish->pos.y = 100 + (rand() % 50);  // Lower half of screen
+    jellyfish->pos.x = 72;  // Center horizontally
+    jellyfish->pos.y = 120;  // Lower part but not too low
     jellyfish->tentacle_offset = 0;
     jellyfish->pulse_state = 0;
     jellyfish->speed = 1 + (rand() % 2);
+}
+
+// Initialize shark
+static void init_shark(Shark *shark) {
+    shark->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
+    shark->pos.x = (shark->direction == 1) ? -30 : 174;  // Start further offscreen
+    shark->pos.y = 50 + (rand() % 50);  // Middle area of screen
+    shark->jaw_state = 0;  // Mouth closed
+    shark->speed = 3;  // Sharks are fast!
+    shark->active = false;  // Start inactive
+    shark->timer = 300 + (rand() % 300);  // Random timer for first appearance (5-10 seconds)
 }
 
 // Draw fish
@@ -267,19 +288,41 @@ static void draw_turtle(GContext *ctx, const Turtle *turtle) {
     graphics_context_set_fill_color(ctx, GColorWhite);
     graphics_context_set_stroke_color(ctx, GColorWhite);
     
-    // Draw shell (oval)
+    // Animation offset for swimming motion
+    int32_t flipper_angle = turtle->animation_offset % TRIG_MAX_ANGLE;
+    int flipper_offset = (sin_lookup(flipper_angle) * 2) / TRIG_MAX_RATIO;
+    
+    // Draw shell with pattern (oval with details)
     GRect shell_rect = (GRect){
-        .origin = {turtle->pos.x - 7, turtle->pos.y - 4},
-        .size = {14, 8}
+        .origin = {turtle->pos.x - 8, turtle->pos.y - 5},
+        .size = {16, 10}
     };
     graphics_fill_rect(ctx, shell_rect, 4, GCornersAll);
     
+    // Shell pattern - draw shell segments
+    graphics_context_set_stroke_color(ctx, GColorBlack);
+    graphics_context_set_stroke_width(ctx, 1);
+    
+    // Vertical line down the middle
+    graphics_draw_line(ctx, 
+                      (GPoint){turtle->pos.x, turtle->pos.y - 5},
+                      (GPoint){turtle->pos.x, turtle->pos.y + 5});
+    
+    // Horizontal segments
+    graphics_draw_line(ctx, 
+                      (GPoint){turtle->pos.x - 7, turtle->pos.y - 2},
+                      (GPoint){turtle->pos.x + 7, turtle->pos.y - 2});
+    graphics_draw_line(ctx, 
+                      (GPoint){turtle->pos.x - 7, turtle->pos.y + 2},
+                      (GPoint){turtle->pos.x + 7, turtle->pos.y + 2});
+    
     // Draw head
+    graphics_context_set_fill_color(ctx, GColorWhite);
     GPoint head_pos = (GPoint){
-        turtle->pos.x + (turtle->direction * 7),
+        turtle->pos.x + (turtle->direction * 9),
         turtle->pos.y
     };
-    graphics_fill_circle(ctx, head_pos, 3);
+    graphics_fill_circle(ctx, head_pos, 4);
     
     // Draw eye
     graphics_context_set_fill_color(ctx, GColorBlack);
@@ -292,22 +335,18 @@ static void draw_turtle(GContext *ctx, const Turtle *turtle) {
     // Draw flippers
     graphics_context_set_fill_color(ctx, GColorWhite);
     
-    // Animation offset for swimming motion
-    int32_t flipper_angle = turtle->animation_offset % TRIG_MAX_ANGLE;
-    int flipper_offset = (sin_lookup(flipper_angle) * 2) / TRIG_MAX_RATIO;
-    
     // Front flipper
     GPoint front_flipper[3] = {
-        {turtle->pos.x + (turtle->direction * 4), turtle->pos.y - 1},
-        {turtle->pos.x + (turtle->direction * 4), turtle->pos.y + 5},
-        {turtle->pos.x + (turtle->direction * (8 + flipper_offset)), turtle->pos.y + 4}
+        {turtle->pos.x + (turtle->direction * 5), turtle->pos.y - 2},
+        {turtle->pos.x + (turtle->direction * 5), turtle->pos.y + 6},
+        {turtle->pos.x + (turtle->direction * (10 + flipper_offset)), turtle->pos.y + 5}
     };
     
     // Back flipper
     GPoint back_flipper[3] = {
-        {turtle->pos.x - (turtle->direction * 4), turtle->pos.y - 1},
-        {turtle->pos.x - (turtle->direction * 4), turtle->pos.y + 5},
-        {turtle->pos.x - (turtle->direction * (8 - flipper_offset)), turtle->pos.y + 4}
+        {turtle->pos.x - (turtle->direction * 5), turtle->pos.y - 2},
+        {turtle->pos.x - (turtle->direction * 5), turtle->pos.y + 6},
+        {turtle->pos.x - (turtle->direction * (10 - flipper_offset)), turtle->pos.y + 5}
     };
     
     // Draw flippers
@@ -361,6 +400,94 @@ static void draw_jellyfish(GContext *ctx, const Jellyfish *jellyfish) {
     }
 }
 
+// Draw shark
+static void draw_shark(GContext *ctx, const Shark *shark) {
+    if (!shark->active) return;
+    
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    
+    // Draw shark body (elongated shape)
+    GRect body_rect = (GRect){
+        .origin = {shark->pos.x - (shark->direction * 15), shark->pos.y - 8},
+        .size = {30, 16}
+    };
+    graphics_fill_rect(ctx, body_rect, 0, GCornerNone);
+    
+    // Draw tail
+    GPoint tail_points[3] = {
+        {shark->pos.x - (shark->direction * 15), shark->pos.y},
+        {shark->pos.x - (shark->direction * 25), shark->pos.y - 10},
+        {shark->pos.x - (shark->direction * 25), shark->pos.y + 10}
+    };
+    
+    GPathInfo tail_path;
+    tail_path.num_points = 3;
+    tail_path.points = tail_points;
+    
+    GPath *path = gpath_create(&tail_path);
+    gpath_draw_filled(ctx, path);
+    gpath_destroy(path);
+    
+    // Draw dorsal fin
+    GPoint dorsal_points[3] = {
+        {shark->pos.x, shark->pos.y - 8},
+        {shark->pos.x - (shark->direction * 5), shark->pos.y - 16},
+        {shark->pos.x + (shark->direction * 5), shark->pos.y - 8}
+    };
+    
+    GPathInfo dorsal_path;
+    dorsal_path.num_points = 3;
+    dorsal_path.points = dorsal_points;
+    
+    path = gpath_create(&dorsal_path);
+    gpath_draw_filled(ctx, path);
+    gpath_destroy(path);
+    
+    // Draw eye
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    GPoint eye_pos = (GPoint){
+        shark->pos.x + (shark->direction * 10),
+        shark->pos.y - 4
+    };
+    graphics_fill_circle(ctx, eye_pos, 2);
+    
+    // Draw mouth/jaw - animated open/close
+    int jaw_open = (shark->jaw_state > 50) ? 6 : 2; // Mouth opens and closes
+    
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    
+    // Upper jaw
+    GPoint upper_jaw[3] = {
+        {shark->pos.x + (shark->direction * 15), shark->pos.y},
+        {shark->pos.x + (shark->direction * 15), shark->pos.y - 5},
+        {shark->pos.x + (shark->direction * 22), shark->pos.y}
+    };
+    
+    GPathInfo upper_jaw_path;
+    upper_jaw_path.num_points = 3;
+    upper_jaw_path.points = upper_jaw;
+    
+    path = gpath_create(&upper_jaw_path);
+    gpath_draw_filled(ctx, path);
+    gpath_destroy(path);
+    
+    // Lower jaw - changes with animation
+    GPoint lower_jaw[3] = {
+        {shark->pos.x + (shark->direction * 15), shark->pos.y},
+        {shark->pos.x + (shark->direction * 15), shark->pos.y + jaw_open},
+        {shark->pos.x + (shark->direction * 22), shark->pos.y}
+    };
+    
+    GPathInfo lower_jaw_path;
+    lower_jaw_path.num_points = 3;
+    lower_jaw_path.points = lower_jaw;
+    
+    path = gpath_create(&lower_jaw_path);
+    gpath_draw_filled(ctx, path);
+    gpath_destroy(path);
+}
+
 // Check if two elements collide (basic circle collision)
 static bool check_collision(GPoint pos1, int radius1, GPoint pos2, int radius2) {
     int dx = pos1.x - pos2.x;
@@ -392,14 +519,14 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
         draw_turtle(ctx, &s_turtles[i]);
     }
     
-    // Draw fish (foreground)
-    for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
-        draw_fish(ctx, &s_fish[i]);
-    }
-    
     // Draw jellyfish
     for (int i = 0; i < MAX_JELLYFISH; i++) {
         draw_jellyfish(ctx, &s_jellyfish[i]);
+    }
+    
+    // Draw fish (foreground)
+    for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
+        draw_fish(ctx, &s_fish[i]);
     }
     
     // Draw bubbles
@@ -409,6 +536,9 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     
     // Draw octopus
     draw_octopus(ctx, &s_octopus);
+    
+    // Draw shark on top of everything (it's the apex predator!)
+    draw_shark(ctx, &s_shark);
 }
 
 // Battery layer update proc
@@ -592,6 +722,53 @@ static void animation_update(void) {
         if (s_octopus.pos.x > 134) s_octopus.pos.x = 134;
     }
     
+    // Update shark
+    if (s_shark.active) {
+        // Move shark
+        s_shark.pos.x += s_shark.direction * s_shark.speed;
+        
+        // Animate jaw
+        s_shark.jaw_state = (s_shark.jaw_state + 1) % 100;
+        
+        // Check for shark eating fish
+        for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
+            if (s_fish[i].active) {
+                if (abs(s_shark.pos.x - s_fish[i].pos.x) < 20 && 
+                    abs(s_shark.pos.y - s_fish[i].pos.y) < 12) {
+                    s_fish[i].active = false;  // Fish gets eaten
+                    
+                    // Create bubbles to mark the eating event
+                    for (int b = 0; b < 5; b++) {
+                        for (int k = 0; k < MAX_BUBBLES; k++) {
+                            if (!s_bubbles[k].active) {
+                                s_bubbles[k].pos = s_fish[i].pos;
+                                s_bubbles[k].size = 1 + (rand() % 3);
+                                s_bubbles[k].speed = 1 + (rand() % 3);
+                                s_bubbles[k].active = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Remove shark if it swims off screen
+        if ((s_shark.direction == 1 && s_shark.pos.x > 174) ||
+            (s_shark.direction == -1 && s_shark.pos.x < -30)) {
+            s_shark.active = false;
+            s_shark.timer = 500 + (rand() % 500);  // Wait longer before next appearance
+        }
+    } else {
+        // Countdown to shark appearance
+        s_shark.timer--;
+        if (s_shark.timer <= 0) {
+            // Time for shark to appear!
+            init_shark(&s_shark);
+            s_shark.active = true;
+        }
+    }
+    
     layer_mark_dirty(s_canvas_layer);
 }
 
@@ -709,6 +886,9 @@ static void main_window_load(Window *window) {
     for (int i = 0; i < MAX_JELLYFISH; i++) {
         init_jellyfish(&s_jellyfish[i]);
     }
+    
+    // Initialize shark
+    init_shark(&s_shark);
     
     // Start animation timer
     app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
