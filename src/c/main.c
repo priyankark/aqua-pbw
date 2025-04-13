@@ -66,6 +66,18 @@ typedef struct {
     int timer;          // Countdown for appearance/disappearance
 } Seahorse;
 
+typedef struct {
+    GPoint pos;
+    int direction;   // 1 for right, -1 for left
+    int claw_state;  // For animating claws
+    int speed;
+} Crab;
+
+typedef struct {
+    GPoint pos;
+    int open_state;  // For occasional opening/closing
+} Clam;
+
 // UI Elements
 static Window *s_main_window;
 static Layer *s_canvas_layer;
@@ -90,6 +102,8 @@ static Turtle s_turtles[MAX_TURTLES];
 static Jellyfish s_jellyfish[MAX_JELLYFISH];
 static Shark s_shark;      // One shark is enough!
 static Seahorse s_seahorse; // One seahorse
+static Crab s_crab;        // Tiny crab at the bottom
+static Clam s_clam;        // Small clam
 
 // Update frequency
 #define ANIMATION_INTERVAL 50
@@ -176,6 +190,27 @@ static void init_seahorse(Seahorse *seahorse) {
     seahorse->active = true;
     seahorse->timer = 0;   // Not used for disappearing anymore
 }
+
+// Initialize crab
+static void init_crab(Crab *crab) {
+    crab->pos.x = 100;  // Start around the middle-right
+    crab->pos.y = 160;  // Very close to bottom
+    crab->direction = -1;  // Start moving left
+    crab->claw_state = 0;
+    crab->speed = 1;
+}
+
+// Initialize clam
+static void init_clam(Clam *clam) {
+    clam->pos.x = 120;  // Right side of bottom
+    clam->pos.y = 165;  // Very bottom
+    clam->open_state = 0;
+}
+
+// Forward declarations for update functions
+static void update_seahorse(Seahorse *seahorse);
+static void update_crab(Crab *crab);
+static void update_clam(Clam *clam);
 
 // Update seahorse
 static void update_seahorse(Seahorse *seahorse) {
@@ -426,6 +461,83 @@ static void draw_jellyfish(GContext *ctx, const Jellyfish *jellyfish) {
     }
 }
 
+// Draw crab
+static void draw_crab(GContext *ctx, const Crab *crab) {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    
+    // Draw tiny body (small circle)
+    graphics_fill_circle(ctx, crab->pos, 3);
+    
+    // Animate claws
+    int claw_offset = (crab->claw_state % 20 < 10) ? 0 : 1;
+    
+    // Draw legs (3 on each side)
+    for (int i = 0; i < 3; i++) {
+        // Left legs
+        GPoint leg_start_l = (GPoint){crab->pos.x - 2, crab->pos.y - 1 + i};
+        GPoint leg_end_l = (GPoint){crab->pos.x - 5, crab->pos.y + 1 + i};
+        graphics_draw_line(ctx, leg_start_l, leg_end_l);
+        
+        // Right legs
+        GPoint leg_start_r = (GPoint){crab->pos.x + 2, crab->pos.y - 1 + i};
+        GPoint leg_end_r = (GPoint){crab->pos.x + 5, crab->pos.y + 1 + i};
+        graphics_draw_line(ctx, leg_start_r, leg_end_r);
+    }
+    
+    // Draw claws
+    GPoint claw_left_start = (GPoint){crab->pos.x - 3, crab->pos.y - 2};
+    GPoint claw_left_mid = (GPoint){crab->pos.x - 5, crab->pos.y - 3};
+    GPoint claw_left_end = (GPoint){crab->pos.x - 6, crab->pos.y - 4 + claw_offset};
+    
+    GPoint claw_right_start = (GPoint){crab->pos.x + 3, crab->pos.y - 2};
+    GPoint claw_right_mid = (GPoint){crab->pos.x + 5, crab->pos.y - 3};
+    GPoint claw_right_end = (GPoint){crab->pos.x + 6, crab->pos.y - 4 + claw_offset};
+    
+    graphics_draw_line(ctx, claw_left_start, claw_left_mid);
+    graphics_draw_line(ctx, claw_left_mid, claw_left_end);
+    
+    graphics_draw_line(ctx, claw_right_start, claw_right_mid);
+    graphics_draw_line(ctx, claw_right_mid, claw_right_end);
+    
+    // Draw eyes (tiny dots on top)
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    GPoint eye_left = (GPoint){crab->pos.x - 1, crab->pos.y - 2};
+    GPoint eye_right = (GPoint){crab->pos.x + 1, crab->pos.y - 2};
+    graphics_fill_circle(ctx, eye_left, 1);
+    graphics_fill_circle(ctx, eye_right, 1);
+}
+
+// Draw clam
+static void draw_clam(GContext *ctx, const Clam *clam) {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    
+    // Draw clam shell
+    int open_amount = (clam->open_state > 0) ? clam->open_state / 10 : 0;
+    
+    // Bottom half (static)
+    GRect bottom_rect = (GRect){
+        .origin = {clam->pos.x - 5, clam->pos.y - 2},
+        .size = {10, 4}
+    };
+    graphics_fill_rect(ctx, bottom_rect, 3, GCornersBottom);
+    
+    // Top half (moves slightly when opening)
+    GRect top_rect = (GRect){
+        .origin = {clam->pos.x - 5, clam->pos.y - 4 - open_amount},
+        .size = {10, 4}
+    };
+    graphics_fill_rect(ctx, top_rect, 3, GCornersTop);
+    
+    // If open, show a tiny pearl inside
+    if (open_amount > 0) {
+        graphics_context_set_fill_color(ctx, GColorBlack);
+        GPoint pearl_pos = (GPoint){clam->pos.x, clam->pos.y - 2};
+        graphics_fill_circle(ctx, pearl_pos, 1);
+    }
+}
+
 // Draw shark
 static void draw_shark(GContext *ctx, const Shark *shark) {
     if (!shark->active) return;
@@ -653,6 +765,12 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     for (int i = 0; i < MAX_SEAWEED; i++) {
         draw_seaweed(ctx, &s_seaweed[i]);
     }
+    
+    // Draw clam at the very bottom
+    draw_clam(ctx, &s_clam);
+    
+    // Draw crab at the bottom
+    draw_crab(ctx, &s_crab);
     
     // Draw plankton
     for (int i = 0; i < MAX_PLANKTON; i++) {
@@ -917,6 +1035,12 @@ static void animation_update(void) {
     // Update seahorse - only animate, never disappear
     update_seahorse(&s_seahorse);
     
+    // Update crab
+    update_crab(&s_crab);
+    
+    // Update clam
+    update_clam(&s_clam);
+    
     layer_mark_dirty(s_canvas_layer);
 }
 
@@ -943,6 +1067,30 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 static void animation_timer_callback(void *data) {
     animation_update();
     app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
+}
+
+// Update crab animation
+static void update_crab(Crab *crab) {
+    // Move side to side
+    crab->pos.x += crab->direction * crab->speed;
+    
+    // Animate claws
+    crab->claw_state = (crab->claw_state + 1) % 20;
+    
+    // Reverse direction at screen edges
+    if (crab->pos.x <= 15 || crab->pos.x >= 130) {
+        crab->direction *= -1;
+    }
+}
+
+// Update clam animation
+static void update_clam(Clam *clam) {
+    // Occasionally open and close
+    if (clam->open_state > 0) {
+        clam->open_state--;
+    } else if (rand() % 400 == 0) {  // Rare opening (every ~20 seconds)
+        clam->open_state = 40;  // Stay open for 2 seconds
+    }
 }
 
 static void main_window_load(Window *window) {
@@ -1040,6 +1188,12 @@ static void main_window_load(Window *window) {
     
     // Initialize seahorse
     init_seahorse(&s_seahorse);
+    
+    // Initialize crab
+    init_crab(&s_crab);
+    
+    // Initialize clam
+    init_clam(&s_clam);
     
     // Start animation timer
     app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
