@@ -1,12 +1,15 @@
-# Gears of Time
+# Aqua
 
-A clean and elegant watchface featuring smooth rotating spiral animations. The watchface displays time, date, and battery level with a unique spiral theme that creates an engaging visual experience while maintaining perfect clarity.
+A dynamic and engaging watchface featuring an animated underwater aquarium. The watchface displays time, date, and battery level while presenting a lively aquatic ecosystem with various sea creatures.
 
 ## Features
 
-- Concentric spiral animations with varying rotation speeds
+- Animated fish, seahorse, shark, turtle, and other sea creatures
+- Interactive ecosystem where big fish eat small fish
+- Animated seaweed, bubbles, and plankton
+- Bottom-dwelling crab and clam
 - Clear time and date display
-- Battery indicator with spiral theme
+- Battery indicator
 - Memory-efficient animation system
 
 ## Project Structure
@@ -28,14 +31,14 @@ The project uses the Rebble tool for building and running. To build the project:
 rebble build
 ```
 
-This will generate a `build/gears-of-time.pbw` file.
+This will generate a `build/aqua.pbw` file.
 
 ## Running in Emulator
 
 To run the watchface in the emulator:
 
 ```bash
-rebble install --emulator basalt build/gears-of-time.pbw
+rebble install --emulator basalt build/aqua.pbw
 ```
 
 To interact with the emulator:
@@ -54,20 +57,19 @@ This will provide a web interface accessible at a local URL (displayed in the te
 
 ### Main Components
 
-1. **Spiral System**
-   - Concentric spiral circles with smooth animations
-   - Variable rotation speeds and directions
-   - Contrast-enhancing color variations
-   - Corner accent spirals
+1. **Aquarium System**
+   - Multiple types of animated sea creatures
+   - Animated environment elements (seaweed, bubbles)
+   - Interactive predator-prey relationships
+   - Bottom-dwelling creatures (crab, clam, seahorse)
 
 2. **Time Display**
    - Clear, centered time presentation
    - Date display with day and month
-   - Pulsing shadow effect for better readability
+   - Designed to be visible against the aquarium background
 
 3. **Battery Indicator**
-   - Spiral-themed battery meter
-   - Percentage display
+   - Simple and effective battery meter
    - Visual battery level representation
 
 ### Platform Support
