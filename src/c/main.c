@@ -108,11 +108,26 @@ static Clam s_clam;        // Small clam
 // Update frequency
 #define ANIMATION_INTERVAL 50
 
+// Helper function for safer random number generation within a range
+static int random_in_range(int min, int max) {
+    // Ensure max > min
+    if (max <= min) return min;
+    
+    // Calculate safe range and ensure it won't overflow
+    int range = max - min + 1;
+    if (range <= 0) return min; // Overflow protection
+    
+    // Use modulo for smaller range
+    return min + (rand() % range);
+}
+
 // Initialize a fish with random position and speed
 static void init_fish(Fish *fish, int size) {
-    fish->pos.y = 20 + (rand() % 100);
-    fish->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
-    fish->speed = size == 1 ? (2 + (rand() % 3)) : (1 + (rand() % 2));  // Big fish are slower
+    fish->pos.y = random_in_range(20, 119); // Between 20 and 119
+    fish->direction = (random_in_range(0, 1) * 2) - 1;  // Either 1 or -1
+    fish->speed = size == 1 ? 
+                 random_in_range(2, 4) : 
+                 random_in_range(1, 2);  // Big fish are slower
     fish->pos.x = (fish->direction == 1) ? -10 : 144;  // Use screen width constant
     fish->active = true;
     fish->size = size;
@@ -123,40 +138,40 @@ static void init_seaweed(Seaweed *seaweed, int x) {
     seaweed->base.x = x;
     seaweed->base.y = 168;  // Screen height
     seaweed->offset = 0;
-    seaweed->speed = 1 + (rand() % 2);
+    seaweed->speed = random_in_range(1, 2);
 }
 
 // Initialize bubble
 static void init_bubble(Bubble *bubble) {
-    bubble->pos.x = rand() % 144;  // Random x position
+    bubble->pos.x = random_in_range(0, 143);  // Random x position
     bubble->pos.y = 168;           // Start at bottom
-    bubble->size = 1 + (rand() % 3);
-    bubble->speed = 1 + (rand() % 3);
+    bubble->size = random_in_range(1, 3);
+    bubble->speed = random_in_range(1, 3);
     bubble->active = true;
 }
 
 // Initialize plankton
 static void init_plankton(Plankton *plankton) {
-    plankton->pos.x = rand() % 144;
-    plankton->pos.y = 20 + (rand() % 120);
-    plankton->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
-    plankton->speed = 1 + (rand() % 2);
+    plankton->pos.x = random_in_range(0, 143);
+    plankton->pos.y = random_in_range(20, 139);
+    plankton->direction = (random_in_range(0, 1) * 2) - 1;  // Either 1 or -1
+    plankton->speed = random_in_range(1, 2);
     plankton->active = true;
 }
 
 // Initialize octopus
 static void init_octopus(Octopus *octopus) {
-    octopus->pos.x = rand() % 70 + 37;  // Somewhere in the middle
+    octopus->pos.x = random_in_range(37, 106);  // Somewhere in the middle
     octopus->pos.y = 25;                // Near the top (moved from bottom)
-    octopus->direction = (rand() % 2) * 2 - 1;
+    octopus->direction = (random_in_range(0, 1) * 2) - 1;
     octopus->tentacle_offset = 0;
     octopus->speed = 1;
 }
 
 // Initialize turtle
 static void init_turtle(Turtle *turtle) {
-    turtle->pos.y = 60 + (rand() % 60);  // Middle to bottom area
-    turtle->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
+    turtle->pos.y = random_in_range(60, 119);  // Middle to bottom area
+    turtle->direction = (random_in_range(0, 1) * 2) - 1;  // Either 1 or -1
     turtle->pos.x = (turtle->direction == 1) ? -15 : 144;  // Start offscreen
     turtle->animation_offset = 0;
     turtle->speed = 1;  // Turtles are slow
@@ -168,18 +183,18 @@ static void init_jellyfish(Jellyfish *jellyfish) {
     jellyfish->pos.y = 120;  // Lower part but not too low
     jellyfish->tentacle_offset = 0;
     jellyfish->pulse_state = 0;
-    jellyfish->speed = 1 + (rand() % 2);
+    jellyfish->speed = random_in_range(1, 2);
 }
 
 // Initialize shark
 static void init_shark(Shark *shark) {
-    shark->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
+    shark->direction = (random_in_range(0, 1) * 2) - 1;  // Either 1 or -1
     shark->pos.x = (shark->direction == 1) ? -30 : 174;  // Start further offscreen
-    shark->pos.y = 50 + (rand() % 50);  // Middle area of screen
+    shark->pos.y = random_in_range(50, 99);  // Middle area of screen
     shark->jaw_state = 0;  // Mouth closed
     shark->speed = 3;  // Sharks are fast!
     shark->active = false;  // Start inactive
-    shark->timer = 150 + (rand() % 150);  // Reduced timer - appear more often (2.5-5 seconds)
+    shark->timer = random_in_range(150, 299);  // Reduced timer - appear more often (2.5-5 seconds)
 }
 
 // Initialize seahorse
@@ -248,8 +263,10 @@ static void draw_fish(GContext *ctx, const Fish *fish) {
     path_info.points = tail_points;
     
     GPath *path = gpath_create(&path_info);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
+    if (path) {
+        gpath_draw_filled(ctx, path);
+        gpath_destroy(path);
+    }
     
     // Add eye for big fish
     if (fish->size > 1) {
@@ -416,13 +433,17 @@ static void draw_turtle(GContext *ctx, const Turtle *turtle) {
     
     path_info.points = front_flipper;
     GPath *path = gpath_create(&path_info);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
+    if (path) {
+        gpath_draw_filled(ctx, path);
+        gpath_destroy(path);
+    }
     
     path_info.points = back_flipper;
     path = gpath_create(&path_info);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
+    if (path) {
+        gpath_draw_filled(ctx, path);
+        gpath_destroy(path);
+    }
 }
 
 // Draw jellyfish
@@ -559,8 +580,10 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
     body_path.points = body_points;
     
     GPath *path = gpath_create(&body_path);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
+    if (path) {
+        gpath_draw_filled(ctx, path);
+        gpath_destroy(path);
+    }
     
     // Draw tail
     GPoint tail_points[3] = {
@@ -574,8 +597,10 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
     tail_path.points = tail_points;
     
     path = gpath_create(&tail_path);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
+    if (path) {
+        gpath_draw_filled(ctx, path);
+        gpath_destroy(path);
+    }
     
     // Draw dorsal fin
     GPoint fin_points[3] = {
@@ -589,8 +614,10 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
     fin_path.points = fin_points;
     
     path = gpath_create(&fin_path);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
+    if (path) {
+        gpath_draw_filled(ctx, path);
+        gpath_destroy(path);
+    }
     
     // Draw eye
     graphics_context_set_fill_color(ctx, GColorBlack);
@@ -857,25 +884,29 @@ static void animation_update(void) {
         // Big fish eat small fish
         if (s_fish[i].size > 1) {  // If this is a big fish
             for (int j = 0; j < MAX_FISH; j++) {  // Check all small fish
+                if (j < 0 || j >= MAX_FISH) continue;  // Boundary check
                 if (s_fish[j].active && s_fish[j].size == 1) {
                     if (check_collision(s_fish[i].pos, 7, s_fish[j].pos, 4)) {
                         s_fish[j].active = false;  // Small fish gets eaten
                         
                         // Create bubbles to mark the eating event
                         for (int b = 0; b < 3; b++) {
+                            bool bubble_created = false;
                             for (int k = 0; k < MAX_BUBBLES; k++) {
                                 if (!s_bubbles[k].active) {
                                     s_bubbles[k].pos = s_fish[j].pos;
-                                    s_bubbles[k].size = 1 + (rand() % 2);
-                                    s_bubbles[k].speed = 1 + (rand() % 2);
+                                    s_bubbles[k].size = random_in_range(1, 2);
+                                    s_bubbles[k].speed = random_in_range(1, 2);
                                     s_bubbles[k].active = true;
+                                    bubble_created = true;
                                     break;
                                 }
                             }
+                            // If no inactive bubbles were found, stop trying
+                            if (!bubble_created) {
+                                break;
+                            }
                         }
-                        
-                        // Respawn the eaten fish after a short delay (handled elsewhere)
-                        // We'll use the inactive state as a marker for respawn logic
                     }
                 }
             }
@@ -884,13 +915,15 @@ static void animation_update(void) {
     
     // Check for respawning fish
     for (int i = 0; i < MAX_FISH; i++) {
-        if (!s_fish[i].active && (rand() % 50) == 0) {
+        if (i < 0 || i >= MAX_FISH) continue;  // Boundary check
+        if (!s_fish[i].active && (random_in_range(0, 49) == 0)) {
             init_fish(&s_fish[i], 1);  // Reinitialize with size 1 (small fish)
         }
     }
     
     // Update seaweed animation
     for (int i = 0; i < MAX_SEAWEED; i++) {
+        if (i < 0 || i >= MAX_SEAWEED) continue;  // Boundary check
         s_seaweed[i].offset += s_seaweed[i].speed * 100;
         if (s_seaweed[i].offset >= TRIG_MAX_ANGLE) {
             s_seaweed[i].offset -= TRIG_MAX_ANGLE;
@@ -899,30 +932,32 @@ static void animation_update(void) {
     
     // Update bubbles
     for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (i < 0 || i >= MAX_BUBBLES) continue;  // Boundary check
         if (s_bubbles[i].active) {
             s_bubbles[i].pos.y -= s_bubbles[i].speed;
             
             // Slight x wobble
-            if (rand() % 3 == 0) {
-                s_bubbles[i].pos.x += (rand() % 3) - 1;
+            if (random_in_range(0, 2) == 0) {
+                s_bubbles[i].pos.x += random_in_range(-1, 1);
             }
             
             // Remove bubble when it reaches the top
             if (s_bubbles[i].pos.y < 0) {
                 s_bubbles[i].active = false;
             }
-        } else if (rand() % 100 < 2) {  // 2% chance to create a new bubble
+        } else if (random_in_range(0, 99) < 2) {  // 2% chance to create a new bubble
             init_bubble(&s_bubbles[i]);
         }
     }
     
     // Update plankton
     for (int i = 0; i < MAX_PLANKTON; i++) {
+        if (i < 0 || i >= MAX_PLANKTON) continue;  // Boundary check
         if (s_plankton[i].active) {
             // Random movement for plankton
-            if (rand() % 4 == 0) {
-                s_plankton[i].pos.x += (rand() % 3) - 1;
-                s_plankton[i].pos.y += (rand() % 3) - 1;
+            if (random_in_range(0, 3) == 0) {
+                s_plankton[i].pos.x += random_in_range(-1, 1);
+                s_plankton[i].pos.y += random_in_range(-1, 1);
             }
             
             // Keep plankton in bounds
@@ -930,13 +965,14 @@ static void animation_update(void) {
             if (s_plankton[i].pos.x > 144) s_plankton[i].pos.x = 144;
             if (s_plankton[i].pos.y < 0) s_plankton[i].pos.y = 0;
             if (s_plankton[i].pos.y > 168) s_plankton[i].pos.y = 168;
-        } else if (rand() % 100 < 3) {  // 3% chance to create new plankton
+        } else if (random_in_range(0, 99) < 3) {  // 3% chance to create new plankton
             init_plankton(&s_plankton[i]);
         }
     }
     
     // Update turtle
     for (int i = 0; i < MAX_TURTLES; i++) {
+        if (i < 0 || i >= MAX_TURTLES) continue;  // Boundary check
         s_turtles[i].pos.x += s_turtles[i].direction * s_turtles[i].speed;
         s_turtles[i].animation_offset += s_turtles[i].speed * 200;
         
@@ -949,6 +985,7 @@ static void animation_update(void) {
     
     // Update jellyfish
     for (int i = 0; i < MAX_JELLYFISH; i++) {
+        if (i < 0 || i >= MAX_JELLYFISH) continue;  // Boundary check
         s_jellyfish[i].tentacle_offset += s_jellyfish[i].speed * 100;
         if (s_jellyfish[i].tentacle_offset >= TRIG_MAX_ANGLE) {
             s_jellyfish[i].tentacle_offset -= TRIG_MAX_ANGLE;
@@ -964,8 +1001,8 @@ static void animation_update(void) {
         }
         
         // Random side movement
-        if (rand() % 20 == 0) {
-            s_jellyfish[i].pos.x += (rand() % 3) - 1;
+        if (random_in_range(0, 19) == 0) {
+            s_jellyfish[i].pos.x += random_in_range(-1, 1);
             
             // Keep in bounds
             if (s_jellyfish[i].pos.x < 10) s_jellyfish[i].pos.x = 10;
@@ -980,8 +1017,8 @@ static void animation_update(void) {
     }
     
     // Slow movement for octopus
-    if (rand() % 10 == 0) {
-        s_octopus.pos.x += (rand() % 3) - 1;
+    if (random_in_range(0, 9) == 0) {
+        s_octopus.pos.x += random_in_range(-1, 1);
         
         // Keep octopus in bounds
         if (s_octopus.pos.x < 10) s_octopus.pos.x = 10;
@@ -995,6 +1032,7 @@ static void animation_update(void) {
         
         // Check for shark eating fish
         for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
+            if (i < 0 || i >= MAX_FISH + MAX_BIG_FISH) continue; // Boundary check
             if (s_fish[i].active) {
                 if (abs(s_shark.pos.x - s_fish[i].pos.x) < 20 && 
                     abs(s_shark.pos.y - s_fish[i].pos.y) < 12) {
@@ -1002,14 +1040,21 @@ static void animation_update(void) {
                     
                     // Create bubbles to mark the eating event
                     for (int b = 0; b < 5; b++) {
+                        bool bubble_created = false;
                         for (int k = 0; k < MAX_BUBBLES; k++) {
+                            if (k < 0 || k >= MAX_BUBBLES) continue; // Boundary check
                             if (!s_bubbles[k].active) {
                                 s_bubbles[k].pos = s_fish[i].pos;
-                                s_bubbles[k].size = 1 + (rand() % 3);
-                                s_bubbles[k].speed = 1 + (rand() % 3);
+                                s_bubbles[k].size = random_in_range(1, 3);
+                                s_bubbles[k].speed = random_in_range(1, 3);
                                 s_bubbles[k].active = true;
+                                bubble_created = true;
                                 break;
                             }
+                        }
+                        // If no inactive bubbles were found, stop trying
+                        if (!bubble_created) {
+                            break;
                         }
                     }
                 }
@@ -1020,7 +1065,7 @@ static void animation_update(void) {
         if ((s_shark.direction == 1 && s_shark.pos.x > 174) ||
             (s_shark.direction == -1 && s_shark.pos.x < -30)) {
             s_shark.active = false;
-            s_shark.timer = 200 + (rand() % 300);  // Reduced cooldown before next appearance
+            s_shark.timer = random_in_range(200, 500);  // Reduced cooldown before next appearance
         }
     } else {
         // Countdown to shark appearance
@@ -1048,6 +1093,16 @@ static void animation_update(void) {
 static void update_time(void) {
     time_t temp = time(NULL);
     struct tm *tick_time = localtime(&temp);
+    
+    if (!tick_time) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to get local time");
+        return;
+    }
+    
+    if (!s_time_layer || !s_date_layer) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Time or date layer not initialized");
+        return;
+    }
     
     static char s_time_buffer[8];
     strftime(s_time_buffer, sizeof(s_time_buffer), "%I:%M", tick_time);  // Changed to 12-hour format
@@ -1088,7 +1143,7 @@ static void update_clam(Clam *clam) {
     // Occasionally open and close
     if (clam->open_state > 0) {
         clam->open_state--;
-    } else if (rand() % 400 == 0) {  // Rare opening (every ~20 seconds)
+    } else if (random_in_range(0, 399) == 0) {  // Rare opening (every ~20 seconds)
         clam->open_state = 40;  // Stay open for 2 seconds
     }
 }
@@ -1099,6 +1154,10 @@ static void main_window_load(Window *window) {
     
     // Create canvas layer
     s_canvas_layer = layer_create(bounds);
+    if (!s_canvas_layer) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to create canvas layer");
+        return;
+    }
     layer_set_update_proc(s_canvas_layer, canvas_update_proc);
     layer_add_child(window_layer, s_canvas_layer);
     
@@ -1109,6 +1168,10 @@ static void main_window_load(Window *window) {
     time_frame.size.w = bounds.size.w;
     time_frame.size.h = 34;
     s_time_layer = text_layer_create(time_frame);
+    if (!s_time_layer) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to create time layer");
+        return;
+    }
     
     text_layer_set_text_color(s_time_layer, GColorWhite);
     text_layer_set_background_color(s_time_layer, GColorClear);
@@ -1123,6 +1186,10 @@ static void main_window_load(Window *window) {
     date_frame.size.w = bounds.size.w;
     date_frame.size.h = 20;
     s_date_layer = text_layer_create(date_frame);
+    if (!s_date_layer) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to create date layer");
+        return;
+    }
     
     text_layer_set_text_color(s_date_layer, GColorWhite);
     text_layer_set_background_color(s_date_layer, GColorClear);
@@ -1137,6 +1204,10 @@ static void main_window_load(Window *window) {
     battery_frame.size.w = 20;
     battery_frame.size.h = 8;
     s_battery_layer = layer_create(battery_frame);
+    if (!s_battery_layer) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to create battery layer");
+        return;
+    }
     
     layer_set_update_proc(s_battery_layer, battery_update_proc);
     layer_add_child(window_layer, s_battery_layer);
@@ -1163,7 +1234,7 @@ static void main_window_load(Window *window) {
     
     // Initialize plankton
     for (int i = 0; i < MAX_PLANKTON; i++) {
-        if (rand() % 3 == 0) {  // Start with some plankton
+        if (random_in_range(0, 2) == 0) {  // Start with some plankton
             init_plankton(&s_plankton[i]);
         } else {
             s_plankton[i].active = false;
@@ -1214,6 +1285,10 @@ static void init(void) {
     
     // Create main window
     s_main_window = window_create();
+    if (!s_main_window) {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to create main window");
+        return;
+    }
     
     // Set window handlers
     window_set_window_handlers(s_main_window, (WindowHandlers) {
@@ -1230,7 +1305,9 @@ static void init(void) {
 }
 
 static void deinit(void) {
-    window_destroy(s_main_window);
+    if (s_main_window) {
+        window_destroy(s_main_window);
+    }
     tick_timer_service_unsubscribe();
     battery_state_service_unsubscribe();  // Unsubscribe from battery service
 }
