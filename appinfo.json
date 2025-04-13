@@ -4,7 +4,7 @@
   "longName": "Gears of Time",
   "companyName": "AirCodum",
   "description": "A clean and elegant watchface featuring smooth rotating spiral animations. Displays time, date, and battery level with a unique spiral theme, creating an engaging visual experience while maintaining perfect clarity.",
-  "versionLabel": "1.0",
+  "versionLabel": "1.1",
   "sdkVersion": "3",
   "targetPlatforms": ["aplite", "chalk", "diorite"],
   "watchapp": {
