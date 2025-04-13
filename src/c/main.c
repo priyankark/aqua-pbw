@@ -157,7 +157,7 @@ static void init_shark(Shark *shark) {
     shark->jaw_state = 0;  // Mouth closed
     shark->speed = 3;  // Sharks are fast!
     shark->active = false;  // Start inactive
-    shark->timer = 300 + (rand() % 300);  // Random timer for first appearance (5-10 seconds)
+    shark->timer = 150 + (rand() % 150);  // Reduced timer - appear more often (2.5-5 seconds)
 }
 
 // Draw fish
@@ -404,88 +404,70 @@ static void draw_jellyfish(GContext *ctx, const Jellyfish *jellyfish) {
 static void draw_shark(GContext *ctx, const Shark *shark) {
     if (!shark->active) return;
     
+    // Simple, classic shark design
     graphics_context_set_fill_color(ctx, GColorWhite);
-    graphics_context_set_stroke_color(ctx, GColorWhite);
     
-    // Draw shark body (elongated shape)
-    GRect body_rect = (GRect){
-        .origin = {shark->pos.x - (shark->direction * 15), shark->pos.y - 8},
-        .size = {30, 16}
+    // Draw shark body - triangular front
+    GPoint body_points[5] = {
+        {shark->pos.x + (shark->direction * 15), shark->pos.y},        // nose
+        {shark->pos.x, shark->pos.y - 8},                              // top of body
+        {shark->pos.x - (shark->direction * 15), shark->pos.y - 5},    // back top
+        {shark->pos.x - (shark->direction * 15), shark->pos.y + 5},    // back bottom
+        {shark->pos.x, shark->pos.y + 8}                               // bottom of body
     };
-    graphics_fill_rect(ctx, body_rect, 0, GCornerNone);
+    
+    GPathInfo body_path;
+    body_path.num_points = 5;
+    body_path.points = body_points;
+    
+    GPath *path = gpath_create(&body_path);
+    gpath_draw_filled(ctx, path);
+    gpath_destroy(path);
     
     // Draw tail
     GPoint tail_points[3] = {
-        {shark->pos.x - (shark->direction * 15), shark->pos.y},
-        {shark->pos.x - (shark->direction * 25), shark->pos.y - 10},
-        {shark->pos.x - (shark->direction * 25), shark->pos.y + 10}
+        {shark->pos.x - (shark->direction * 15), shark->pos.y - 5},
+        {shark->pos.x - (shark->direction * 15), shark->pos.y + 5},
+        {shark->pos.x - (shark->direction * 25), shark->pos.y}
     };
     
     GPathInfo tail_path;
     tail_path.num_points = 3;
     tail_path.points = tail_points;
     
-    GPath *path = gpath_create(&tail_path);
+    path = gpath_create(&tail_path);
     gpath_draw_filled(ctx, path);
     gpath_destroy(path);
     
     // Draw dorsal fin
-    GPoint dorsal_points[3] = {
-        {shark->pos.x, shark->pos.y - 8},
+    GPoint fin_points[3] = {
+        {shark->pos.x - (shark->direction * 5), shark->pos.y - 8},
         {shark->pos.x - (shark->direction * 5), shark->pos.y - 16},
-        {shark->pos.x + (shark->direction * 5), shark->pos.y - 8}
+        {shark->pos.x + (shark->direction * 3), shark->pos.y - 8}
     };
     
-    GPathInfo dorsal_path;
-    dorsal_path.num_points = 3;
-    dorsal_path.points = dorsal_points;
+    GPathInfo fin_path;
+    fin_path.num_points = 3;
+    fin_path.points = fin_points;
     
-    path = gpath_create(&dorsal_path);
+    path = gpath_create(&fin_path);
     gpath_draw_filled(ctx, path);
     gpath_destroy(path);
     
     // Draw eye
     graphics_context_set_fill_color(ctx, GColorBlack);
     GPoint eye_pos = (GPoint){
-        shark->pos.x + (shark->direction * 10),
-        shark->pos.y - 4
+        shark->pos.x + (shark->direction * 8),
+        shark->pos.y - 2
     };
-    graphics_fill_circle(ctx, eye_pos, 2);
+    graphics_fill_circle(ctx, eye_pos, 1);
     
-    // Draw mouth/jaw - animated open/close
-    int jaw_open = (shark->jaw_state > 50) ? 6 : 2; // Mouth opens and closes
-    
-    graphics_context_set_fill_color(ctx, GColorBlack);
-    
-    // Upper jaw
-    GPoint upper_jaw[3] = {
-        {shark->pos.x + (shark->direction * 15), shark->pos.y},
-        {shark->pos.x + (shark->direction * 15), shark->pos.y - 5},
-        {shark->pos.x + (shark->direction * 22), shark->pos.y}
-    };
-    
-    GPathInfo upper_jaw_path;
-    upper_jaw_path.num_points = 3;
-    upper_jaw_path.points = upper_jaw;
-    
-    path = gpath_create(&upper_jaw_path);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
-    
-    // Lower jaw - changes with animation
-    GPoint lower_jaw[3] = {
-        {shark->pos.x + (shark->direction * 15), shark->pos.y},
-        {shark->pos.x + (shark->direction * 15), shark->pos.y + jaw_open},
-        {shark->pos.x + (shark->direction * 22), shark->pos.y}
-    };
-    
-    GPathInfo lower_jaw_path;
-    lower_jaw_path.num_points = 3;
-    lower_jaw_path.points = lower_jaw;
-    
-    path = gpath_create(&lower_jaw_path);
-    gpath_draw_filled(ctx, path);
-    gpath_destroy(path);
+    // Simple mouth line
+    graphics_context_set_stroke_color(ctx, GColorBlack);
+    graphics_context_set_stroke_width(ctx, 1);
+    graphics_draw_line(ctx, 
+                       (GPoint){shark->pos.x + (shark->direction * 14), shark->pos.y + 2},
+                       (GPoint){shark->pos.x + (shark->direction * 6), shark->pos.y + 3});
 }
 
 // Check if two elements collide (basic circle collision)
@@ -727,9 +709,6 @@ static void animation_update(void) {
         // Move shark
         s_shark.pos.x += s_shark.direction * s_shark.speed;
         
-        // Animate jaw
-        s_shark.jaw_state = (s_shark.jaw_state + 1) % 100;
-        
         // Check for shark eating fish
         for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
             if (s_fish[i].active) {
@@ -757,7 +736,7 @@ static void animation_update(void) {
         if ((s_shark.direction == 1 && s_shark.pos.x > 174) ||
             (s_shark.direction == -1 && s_shark.pos.x < -30)) {
             s_shark.active = false;
-            s_shark.timer = 500 + (rand() % 500);  // Wait longer before next appearance
+            s_shark.timer = 200 + (rand() % 300);  // Reduced cooldown before next appearance
         }
     } else {
         // Countdown to shark appearance
@@ -778,7 +757,7 @@ static void update_time(void) {
     struct tm *tick_time = localtime(&temp);
     
     static char s_time_buffer[8];
-    strftime(s_time_buffer, sizeof(s_time_buffer), "%H:%M", tick_time);
+    strftime(s_time_buffer, sizeof(s_time_buffer), "%I:%M", tick_time);  // Changed to 12-hour format
     text_layer_set_text(s_time_layer, s_time_buffer);
     
     static char s_date_buffer[24];
