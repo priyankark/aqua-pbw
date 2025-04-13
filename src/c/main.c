@@ -36,6 +36,20 @@ typedef struct {
     int speed;
 } Octopus;
 
+typedef struct {
+    GPoint pos;
+    int direction;   // 1 for right, -1 for left
+    int animation_offset;
+    int speed;
+} Turtle;
+
+typedef struct {
+    GPoint pos;
+    int tentacle_offset;
+    int pulse_state;
+    int speed;
+} Jellyfish;
+
 // UI Elements
 static Window *s_main_window;
 static Layer *s_canvas_layer;
@@ -49,11 +63,15 @@ static Layer *s_battery_layer;
 #define MAX_SEAWEED 4
 #define MAX_BUBBLES 8
 #define MAX_PLANKTON 6
+#define MAX_TURTLES 1
+#define MAX_JELLYFISH 2
 static Fish s_fish[MAX_FISH + MAX_BIG_FISH];  // Combined array for all fish
 static Seaweed s_seaweed[MAX_SEAWEED];
 static Bubble s_bubbles[MAX_BUBBLES];
 static Plankton s_plankton[MAX_PLANKTON];
 static Octopus s_octopus;
+static Turtle s_turtles[MAX_TURTLES];
+static Jellyfish s_jellyfish[MAX_JELLYFISH];
 
 // Update frequency
 #define ANIMATION_INTERVAL 50
@@ -97,10 +115,28 @@ static void init_plankton(Plankton *plankton) {
 // Initialize octopus
 static void init_octopus(Octopus *octopus) {
     octopus->pos.x = rand() % 70 + 37;  // Somewhere in the middle
-    octopus->pos.y = 140;               // Near the bottom
+    octopus->pos.y = 25;                // Near the top (moved from bottom)
     octopus->direction = (rand() % 2) * 2 - 1;
     octopus->tentacle_offset = 0;
     octopus->speed = 1;
+}
+
+// Initialize turtle
+static void init_turtle(Turtle *turtle) {
+    turtle->pos.y = 60 + (rand() % 60);  // Middle to bottom area
+    turtle->direction = (rand() % 2) * 2 - 1;  // Either 1 or -1
+    turtle->pos.x = (turtle->direction == 1) ? -15 : 144;  // Start offscreen
+    turtle->animation_offset = 0;
+    turtle->speed = 1;  // Turtles are slow
+}
+
+// Initialize jellyfish
+static void init_jellyfish(Jellyfish *jellyfish) {
+    jellyfish->pos.x = 20 + (rand() % 104);  // Somewhere in the screen
+    jellyfish->pos.y = 100 + (rand() % 50);  // Lower half of screen
+    jellyfish->tentacle_offset = 0;
+    jellyfish->pulse_state = 0;
+    jellyfish->speed = 1 + (rand() % 2);
 }
 
 // Draw fish
@@ -226,6 +262,105 @@ static void draw_octopus(GContext *ctx, const Octopus *octopus) {
     }
 }
 
+// Draw turtle
+static void draw_turtle(GContext *ctx, const Turtle *turtle) {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    
+    // Draw shell (oval)
+    GRect shell_rect = (GRect){
+        .origin = {turtle->pos.x - 7, turtle->pos.y - 4},
+        .size = {14, 8}
+    };
+    graphics_fill_rect(ctx, shell_rect, 4, GCornersAll);
+    
+    // Draw head
+    GPoint head_pos = (GPoint){
+        turtle->pos.x + (turtle->direction * 7),
+        turtle->pos.y
+    };
+    graphics_fill_circle(ctx, head_pos, 3);
+    
+    // Draw eye
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    GPoint eye_pos = (GPoint){
+        head_pos.x + (turtle->direction * 1),
+        head_pos.y - 1
+    };
+    graphics_fill_circle(ctx, eye_pos, 1);
+    
+    // Draw flippers
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    
+    // Animation offset for swimming motion
+    int32_t flipper_angle = turtle->animation_offset % TRIG_MAX_ANGLE;
+    int flipper_offset = (sin_lookup(flipper_angle) * 2) / TRIG_MAX_RATIO;
+    
+    // Front flipper
+    GPoint front_flipper[3] = {
+        {turtle->pos.x + (turtle->direction * 4), turtle->pos.y - 1},
+        {turtle->pos.x + (turtle->direction * 4), turtle->pos.y + 5},
+        {turtle->pos.x + (turtle->direction * (8 + flipper_offset)), turtle->pos.y + 4}
+    };
+    
+    // Back flipper
+    GPoint back_flipper[3] = {
+        {turtle->pos.x - (turtle->direction * 4), turtle->pos.y - 1},
+        {turtle->pos.x - (turtle->direction * 4), turtle->pos.y + 5},
+        {turtle->pos.x - (turtle->direction * (8 - flipper_offset)), turtle->pos.y + 4}
+    };
+    
+    // Draw flippers
+    GPathInfo path_info;
+    path_info.num_points = 3;
+    
+    path_info.points = front_flipper;
+    GPath *path = gpath_create(&path_info);
+    gpath_draw_filled(ctx, path);
+    gpath_destroy(path);
+    
+    path_info.points = back_flipper;
+    path = gpath_create(&path_info);
+    gpath_draw_filled(ctx, path);
+    gpath_destroy(path);
+}
+
+// Draw jellyfish
+static void draw_jellyfish(GContext *ctx, const Jellyfish *jellyfish) {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    
+    // Pulsing animation for the bell
+    int bell_size = 7 + ((jellyfish->pulse_state < 50) ? jellyfish->pulse_state / 10 : (100 - jellyfish->pulse_state) / 10);
+    
+    // Draw bell (semi-circle)
+    int bell_width = bell_size * 2;
+    GRect bell_rect = (GRect){
+        .origin = {jellyfish->pos.x - bell_size, jellyfish->pos.y - bell_size},
+        .size = {bell_width, bell_size}
+    };
+    graphics_fill_rect(ctx, bell_rect, 0, GCornerNone);
+    graphics_fill_circle(ctx, (GPoint){jellyfish->pos.x, jellyfish->pos.y - bell_size}, bell_size);
+    
+    // Draw tentacles
+    for (int i = 0; i < 5; i++) {
+        int x_pos = jellyfish->pos.x - bell_size + (i * bell_width / 4);
+        GPoint start = (GPoint){x_pos, jellyfish->pos.y};
+        GPoint end = start;
+        
+        for (int j = 0; j < 3; j++) {
+            int32_t wave_angle = (jellyfish->tentacle_offset + (i * 1000) + (j * 1500)) % TRIG_MAX_ANGLE;
+            int16_t wave_offset = (sin_lookup(wave_angle) * 3) / TRIG_MAX_RATIO;
+            
+            end.x = start.x + wave_offset;
+            end.y = start.y + 5;
+            
+            graphics_draw_line(ctx, start, end);
+            start = end;
+        }
+    }
+}
+
 // Check if two elements collide (basic circle collision)
 static bool check_collision(GPoint pos1, int radius1, GPoint pos2, int radius2) {
     int dx = pos1.x - pos2.x;
@@ -252,9 +387,19 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
         draw_plankton(ctx, &s_plankton[i]);
     }
     
+    // Draw turtle
+    for (int i = 0; i < MAX_TURTLES; i++) {
+        draw_turtle(ctx, &s_turtles[i]);
+    }
+    
     // Draw fish (foreground)
     for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
         draw_fish(ctx, &s_fish[i]);
+    }
+    
+    // Draw jellyfish
+    for (int i = 0; i < MAX_JELLYFISH; i++) {
+        draw_jellyfish(ctx, &s_jellyfish[i]);
     }
     
     // Draw bubbles
@@ -394,6 +539,44 @@ static void animation_update(void) {
         }
     }
     
+    // Update turtle
+    for (int i = 0; i < MAX_TURTLES; i++) {
+        s_turtles[i].pos.x += s_turtles[i].direction * s_turtles[i].speed;
+        s_turtles[i].animation_offset += s_turtles[i].speed * 200;
+        
+        // Reset turtle if it swims off screen
+        if ((s_turtles[i].direction == 1 && s_turtles[i].pos.x > 144) ||
+            (s_turtles[i].direction == -1 && s_turtles[i].pos.x < -15)) {
+            init_turtle(&s_turtles[i]);
+        }
+    }
+    
+    // Update jellyfish
+    for (int i = 0; i < MAX_JELLYFISH; i++) {
+        s_jellyfish[i].tentacle_offset += s_jellyfish[i].speed * 100;
+        if (s_jellyfish[i].tentacle_offset >= TRIG_MAX_ANGLE) {
+            s_jellyfish[i].tentacle_offset -= TRIG_MAX_ANGLE;
+        }
+        
+        // Update pulse animation
+        s_jellyfish[i].pulse_state = (s_jellyfish[i].pulse_state + 1) % 100;
+        
+        // Move jellyfish slightly up when pulsing (middle of animation)
+        if (s_jellyfish[i].pulse_state == 50) {
+            s_jellyfish[i].pos.y -= 2;
+            if (s_jellyfish[i].pos.y < 60) s_jellyfish[i].pos.y = 60;
+        }
+        
+        // Random side movement
+        if (rand() % 20 == 0) {
+            s_jellyfish[i].pos.x += (rand() % 3) - 1;
+            
+            // Keep in bounds
+            if (s_jellyfish[i].pos.x < 10) s_jellyfish[i].pos.x = 10;
+            if (s_jellyfish[i].pos.x > 134) s_jellyfish[i].pos.x = 134;
+        }
+    }
+    
     // Update octopus
     s_octopus.tentacle_offset += s_octopus.speed * 50;
     if (s_octopus.tentacle_offset >= TRIG_MAX_ANGLE) {
@@ -421,8 +604,8 @@ static void update_time(void) {
     strftime(s_time_buffer, sizeof(s_time_buffer), "%H:%M", tick_time);
     text_layer_set_text(s_time_layer, s_time_buffer);
     
-    static char s_date_buffer[16];
-    strftime(s_date_buffer, sizeof(s_date_buffer), "%b %d", tick_time);
+    static char s_date_buffer[24];
+    strftime(s_date_buffer, sizeof(s_date_buffer), "%a, %b %d", tick_time);  // Added day of week
     text_layer_set_text(s_date_layer, s_date_buffer);
 }
 
@@ -516,6 +699,16 @@ static void main_window_load(Window *window) {
     
     // Initialize octopus
     init_octopus(&s_octopus);
+    
+    // Initialize turtle
+    for (int i = 0; i < MAX_TURTLES; i++) {
+        init_turtle(&s_turtles[i]);
+    }
+    
+    // Initialize jellyfish
+    for (int i = 0; i < MAX_JELLYFISH; i++) {
+        init_jellyfish(&s_jellyfish[i]);
+    }
     
     // Start animation timer
     app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
