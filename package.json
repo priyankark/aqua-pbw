@@ -1,7 +1,7 @@
 {
   "name": "aqua",
   "author": "Your Name",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {},
