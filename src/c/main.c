@@ -7,6 +7,7 @@ typedef struct {
     int speed;
     bool active;    // Whether the fish is alive/visible
     int size;       // Size of the fish (1 = small, 2 = big)
+    int grid_cell;  // Cell in the spatial grid for faster collision detection
 } Fish;
 
 typedef struct {
@@ -86,6 +87,18 @@ static TextLayer *s_date_layer;
 static Layer *s_battery_layer;
 static AppTimer *s_animation_timer; // Add persistent timer handle
 
+// Battery state
+static int s_battery_level = 100;
+static bool s_is_charging = false;
+
+// Pre-allocated paths for drawing
+static GPath *s_fish_tail_path = NULL;
+static GPath *s_turtle_front_flipper_path = NULL;
+static GPath *s_turtle_back_flipper_path = NULL;
+static GPath *s_shark_body_path = NULL;
+static GPath *s_shark_tail_path = NULL;
+static GPath *s_shark_fin_path = NULL;
+
 // Animation elements
 #define MAX_FISH 5         // Increased for more fish
 #define MAX_BIG_FISH 2     // Big fish that eat small fish
@@ -108,6 +121,19 @@ static Clam s_clam;        // Small clam
 
 // Update frequency
 #define ANIMATION_INTERVAL 50
+#define ANIMATION_INTERVAL_LOW_POWER 100  // Slower updates when battery is low
+#define LOW_BATTERY_THRESHOLD 20  // Consider battery low at 20%
+
+// Spatial grid for collision detection optimization
+#define GRID_WIDTH 3
+#define GRID_HEIGHT 3
+#define GRID_CELL_WIDTH 144 / GRID_WIDTH
+#define GRID_CELL_HEIGHT 168 / GRID_HEIGHT
+#define GRID_CELL_COUNT (GRID_WIDTH * GRID_HEIGHT)
+
+// Track which fish are in which grid cells to optimize collision detection
+static int s_fish_in_grid[GRID_CELL_COUNT][MAX_FISH + MAX_BIG_FISH];
+static int s_fish_grid_counts[GRID_CELL_COUNT];
 
 // Helper function for safer random number generation within a range
 static int random_in_range(int min, int max) {
@@ -258,15 +284,19 @@ static void draw_fish(GContext *ctx, const Fish *fish) {
     tail_points[2].x = fish->pos.x - (fish->direction * (size * 2));
     tail_points[2].y = fish->pos.y + size;
     
+    // Update the path with new points instead of creating/destroying
+    if (s_fish_tail_path) {
+        gpath_destroy(s_fish_tail_path);
+    }
+    
     // Create path for tail
     GPathInfo path_info;
     path_info.num_points = 3;
     path_info.points = tail_points;
     
-    GPath *path = gpath_create(&path_info);
-    if (path) {
-        gpath_draw_filled(ctx, path);
-        gpath_destroy(path);
+    s_fish_tail_path = gpath_create(&path_info);
+    if (s_fish_tail_path) {
+        gpath_draw_filled(ctx, s_fish_tail_path);
     }
     
     // Add eye for big fish
@@ -428,22 +458,29 @@ static void draw_turtle(GContext *ctx, const Turtle *turtle) {
         {turtle->pos.x - (turtle->direction * (10 - flipper_offset)), turtle->pos.y + 5}
     };
     
+    // Clean up previous paths if they exist
+    if (s_turtle_front_flipper_path) {
+        gpath_destroy(s_turtle_front_flipper_path);
+    }
+    
+    if (s_turtle_back_flipper_path) {
+        gpath_destroy(s_turtle_back_flipper_path);
+    }
+    
     // Draw flippers
     GPathInfo path_info;
     path_info.num_points = 3;
     
     path_info.points = front_flipper;
-    GPath *path = gpath_create(&path_info);
-    if (path) {
-        gpath_draw_filled(ctx, path);
-        gpath_destroy(path);
+    s_turtle_front_flipper_path = gpath_create(&path_info);
+    if (s_turtle_front_flipper_path) {
+        gpath_draw_filled(ctx, s_turtle_front_flipper_path);
     }
     
     path_info.points = back_flipper;
-    path = gpath_create(&path_info);
-    if (path) {
-        gpath_draw_filled(ctx, path);
-        gpath_destroy(path);
+    s_turtle_back_flipper_path = gpath_create(&path_info);
+    if (s_turtle_back_flipper_path) {
+        gpath_draw_filled(ctx, s_turtle_back_flipper_path);
     }
 }
 
@@ -576,14 +613,18 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
         {shark->pos.x, shark->pos.y + 8}                               // bottom of body
     };
     
+    // Clean up previous paths if they exist
+    if (s_shark_body_path) {
+        gpath_destroy(s_shark_body_path);
+    }
+    
     GPathInfo body_path;
     body_path.num_points = 5;
     body_path.points = body_points;
     
-    GPath *path = gpath_create(&body_path);
-    if (path) {
-        gpath_draw_filled(ctx, path);
-        gpath_destroy(path);
+    s_shark_body_path = gpath_create(&body_path);
+    if (s_shark_body_path) {
+        gpath_draw_filled(ctx, s_shark_body_path);
     }
     
     // Draw tail
@@ -593,14 +634,18 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
         {shark->pos.x - (shark->direction * 25), shark->pos.y}
     };
     
+    // Clean up previous path if it exists
+    if (s_shark_tail_path) {
+        gpath_destroy(s_shark_tail_path);
+    }
+    
     GPathInfo tail_path;
     tail_path.num_points = 3;
     tail_path.points = tail_points;
     
-    path = gpath_create(&tail_path);
-    if (path) {
-        gpath_draw_filled(ctx, path);
-        gpath_destroy(path);
+    s_shark_tail_path = gpath_create(&tail_path);
+    if (s_shark_tail_path) {
+        gpath_draw_filled(ctx, s_shark_tail_path);
     }
     
     // Draw dorsal fin
@@ -610,14 +655,18 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
         {shark->pos.x + (shark->direction * 3), shark->pos.y - 8}
     };
     
+    // Clean up previous path if it exists
+    if (s_shark_fin_path) {
+        gpath_destroy(s_shark_fin_path);
+    }
+    
     GPathInfo fin_path;
     fin_path.num_points = 3;
     fin_path.points = fin_points;
     
-    path = gpath_create(&fin_path);
-    if (path) {
-        gpath_draw_filled(ctx, path);
-        gpath_destroy(path);
+    s_shark_fin_path = gpath_create(&fin_path);
+    if (s_shark_fin_path) {
+        gpath_draw_filled(ctx, s_shark_fin_path);
     }
     
     // Draw eye
@@ -782,6 +831,42 @@ static bool check_collision(GPoint pos1, int radius1, GPoint pos2, int radius2) 
     return distance_squared <= (radius_sum * radius_sum);
 }
 
+// Calculate grid cell for a point
+static int get_grid_cell(GPoint point) {
+    int grid_x = point.x / GRID_CELL_WIDTH;
+    int grid_y = point.y / GRID_CELL_HEIGHT;
+    
+    // Clamp to grid bounds
+    if (grid_x < 0) grid_x = 0;
+    if (grid_x >= GRID_WIDTH) grid_x = GRID_WIDTH - 1;
+    if (grid_y < 0) grid_y = 0;
+    if (grid_y >= GRID_HEIGHT) grid_y = GRID_HEIGHT - 1;
+    
+    return grid_y * GRID_WIDTH + grid_x;
+}
+
+// Update fish spatial grid positions
+static void update_spatial_grid() {
+    // Reset grid
+    for (int i = 0; i < GRID_CELL_COUNT; i++) {
+        s_fish_grid_counts[i] = 0;
+    }
+    
+    // Place fish in grid cells
+    for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
+        if (s_fish[i].active) {
+            int cell = get_grid_cell(s_fish[i].pos);
+            s_fish[i].grid_cell = cell;
+            
+            // Add to grid if there's space
+            if (s_fish_grid_counts[cell] < MAX_FISH + MAX_BIG_FISH) {
+                s_fish_in_grid[cell][s_fish_grid_counts[cell]] = i;
+                s_fish_grid_counts[cell]++;
+            }
+        }
+    }
+}
+
 // Update canvas layer
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
     // Clear the screen (black for B&W displays)
@@ -881,30 +966,56 @@ static void animation_update(void) {
                 init_fish(&s_fish[i], 2);  // Reinitialize big fish
             }
         }
+    }
+    
+    // Update spatial grid
+    update_spatial_grid();
+    
+    // Check for fish collisions using grid for optimization
+    for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
+        // Only check big fish as predators
+        if (!s_fish[i].active || s_fish[i].size <= 1) continue;
         
-        // Big fish eat small fish
-        if (s_fish[i].size > 1) {  // If this is a big fish
-            for (int j = 0; j < MAX_FISH; j++) {  // Check all small fish
-                if (s_fish[j].active && s_fish[j].size == 1) {
-                    if (check_collision(s_fish[i].pos, 7, s_fish[j].pos, 4)) {
-                        s_fish[j].active = false;  // Small fish gets eaten
-                        
-                        // Create bubbles to mark the eating event
-                        for (int b = 0; b < 3; b++) {
-                            bool bubble_created = false;
-                            for (int k = 0; k < MAX_BUBBLES; k++) {
-                                if (!s_bubbles[k].active) {
-                                    s_bubbles[k].pos = s_fish[j].pos;
-                                    s_bubbles[k].size = random_in_range(1, 2);
-                                    s_bubbles[k].speed = random_in_range(1, 2);
-                                    s_bubbles[k].active = true;
-                                    bubble_created = true;
-                                    break;
+        int cell = s_fish[i].grid_cell;
+        
+        // Check fish in same cell and adjacent cells
+        for (int cell_y = -1; cell_y <= 1; cell_y++) {
+            for (int cell_x = -1; cell_x <= 1; cell_x++) {
+                int target_cell_x = (cell % GRID_WIDTH) + cell_x;
+                int target_cell_y = (cell / GRID_WIDTH) + cell_y;
+                
+                // Skip if outside grid
+                if (target_cell_x < 0 || target_cell_x >= GRID_WIDTH ||
+                    target_cell_y < 0 || target_cell_y >= GRID_HEIGHT) {
+                    continue;
+                }
+                
+                int target_cell = target_cell_y * GRID_WIDTH + target_cell_x;
+                
+                // Check all small fish in this cell
+                for (int k = 0; k < s_fish_grid_counts[target_cell]; k++) {
+                    int j = s_fish_in_grid[target_cell][k];
+                    
+                    // Only check small fish that are active
+                    if (j < MAX_FISH && s_fish[j].active && s_fish[j].size == 1) {
+                        if (check_collision(s_fish[i].pos, 7, s_fish[j].pos, 4)) {
+                            s_fish[j].active = false;  // Small fish gets eaten
+                            
+                            // Create bubbles for eating event
+                            for (int b = 0; b < 3; b++) {
+                                bool bubble_created = false;
+                                for (int k = 0; k < MAX_BUBBLES; k++) {
+                                    if (!s_bubbles[k].active) {
+                                        s_bubbles[k].pos = s_fish[j].pos;
+                                        s_bubbles[k].size = random_in_range(1, 2);
+                                        s_bubbles[k].speed = random_in_range(1, 2);
+                                        s_bubbles[k].active = true;
+                                        bubble_created = true;
+                                        break;
+                                    }
                                 }
-                            }
-                            // If no inactive bubbles were found, stop trying
-                            if (!bubble_created) {
-                                break;
+                                // If no inactive bubbles found, stop trying
+                                if (!bubble_created) break;
                             }
                         }
                     }
@@ -923,8 +1034,9 @@ static void animation_update(void) {
     // Update seaweed animation
     for (int i = 0; i < MAX_SEAWEED; i++) {
         s_seaweed[i].offset += s_seaweed[i].speed * 100;
-        if (s_seaweed[i].offset >= TRIG_MAX_ANGLE) {
-            s_seaweed[i].offset -= TRIG_MAX_ANGLE;
+        // Protect against integer overflow
+        if (s_seaweed[i].offset < 0 || s_seaweed[i].offset >= TRIG_MAX_ANGLE) {
+            s_seaweed[i].offset %= TRIG_MAX_ANGLE;
         }
     }
     
@@ -970,6 +1082,10 @@ static void animation_update(void) {
     for (int i = 0; i < MAX_TURTLES; i++) {
         s_turtles[i].pos.x += s_turtles[i].direction * s_turtles[i].speed;
         s_turtles[i].animation_offset += s_turtles[i].speed * 200;
+        // Protect against integer overflow
+        if (s_turtles[i].animation_offset < 0 || s_turtles[i].animation_offset > 2*TRIG_MAX_ANGLE) {
+            s_turtles[i].animation_offset %= TRIG_MAX_ANGLE;
+        }
         
         // Reset turtle if it swims off screen
         if ((s_turtles[i].direction == 1 && s_turtles[i].pos.x > 144) ||
@@ -981,8 +1097,9 @@ static void animation_update(void) {
     // Update jellyfish
     for (int i = 0; i < MAX_JELLYFISH; i++) {
         s_jellyfish[i].tentacle_offset += s_jellyfish[i].speed * 100;
-        if (s_jellyfish[i].tentacle_offset >= TRIG_MAX_ANGLE) {
-            s_jellyfish[i].tentacle_offset -= TRIG_MAX_ANGLE;
+        // Protect against integer overflow
+        if (s_jellyfish[i].tentacle_offset < 0 || s_jellyfish[i].tentacle_offset >= TRIG_MAX_ANGLE) {
+            s_jellyfish[i].tentacle_offset %= TRIG_MAX_ANGLE;
         }
         
         // Update pulse animation
@@ -1006,8 +1123,9 @@ static void animation_update(void) {
     
     // Update octopus
     s_octopus.tentacle_offset += s_octopus.speed * 50;
-    if (s_octopus.tentacle_offset >= TRIG_MAX_ANGLE) {
-        s_octopus.tentacle_offset -= TRIG_MAX_ANGLE;
+    // Protect against integer overflow
+    if (s_octopus.tentacle_offset < 0 || s_octopus.tentacle_offset >= TRIG_MAX_ANGLE) {
+        s_octopus.tentacle_offset %= TRIG_MAX_ANGLE;
     }
     
     // Slow movement for octopus
@@ -1117,7 +1235,11 @@ static void animation_timer_callback(void *data) {
     animation_update();
     
     // Register next timer and store the handle
-    s_animation_timer = app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
+    // Use slower animation interval if battery is low
+    uint32_t next_interval = (s_battery_level <= LOW_BATTERY_THRESHOLD && !s_is_charging) ? 
+                             ANIMATION_INTERVAL_LOW_POWER : ANIMATION_INTERVAL;
+    
+    s_animation_timer = app_timer_register(next_interval, animation_timer_callback, NULL);
 }
 
 // Update crab animation
@@ -1141,6 +1263,17 @@ static void update_clam(Clam *clam) {
         clam->open_state--;
     } else if (random_in_range(0, 399) == 0) {  // Rare opening (every ~20 seconds)
         clam->open_state = 40;  // Stay open for 2 seconds
+    }
+}
+
+// Battery state handler
+static void battery_callback(BatteryChargeState charge_state) {
+    s_battery_level = charge_state.charge_percent;
+    s_is_charging = charge_state.is_charging;
+    
+    // Request redraw of battery indicator
+    if (s_battery_layer) {
+        layer_mark_dirty(s_battery_layer);
     }
 }
 
@@ -1276,6 +1409,37 @@ static void main_window_unload(Window *window) {
         s_animation_timer = NULL;
     }
     
+    // Clean up path resources
+    if (s_fish_tail_path) {
+        gpath_destroy(s_fish_tail_path);
+        s_fish_tail_path = NULL;
+    }
+    
+    if (s_turtle_front_flipper_path) {
+        gpath_destroy(s_turtle_front_flipper_path);
+        s_turtle_front_flipper_path = NULL;
+    }
+    
+    if (s_turtle_back_flipper_path) {
+        gpath_destroy(s_turtle_back_flipper_path);
+        s_turtle_back_flipper_path = NULL;
+    }
+    
+    if (s_shark_body_path) {
+        gpath_destroy(s_shark_body_path);
+        s_shark_body_path = NULL;
+    }
+    
+    if (s_shark_tail_path) {
+        gpath_destroy(s_shark_tail_path);
+        s_shark_tail_path = NULL;
+    }
+    
+    if (s_shark_fin_path) {
+        gpath_destroy(s_shark_fin_path);
+        s_shark_fin_path = NULL;
+    }
+    
     if (s_canvas_layer) {
         layer_destroy(s_canvas_layer);
         s_canvas_layer = NULL;
@@ -1321,7 +1485,11 @@ static void init(void) {
     
     // Register services
     tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
-    battery_state_service_subscribe(NULL);  // Subscribe to battery service
+    battery_state_service_subscribe(battery_callback);  // Use callback function
+    
+    // Get initial battery state
+    s_battery_level = battery_state_service_peek().charge_percent;
+    s_is_charging = battery_state_service_peek().is_charging;
 }
 
 static void deinit(void) {
@@ -1329,6 +1497,37 @@ static void deinit(void) {
     if (s_animation_timer) {
         app_timer_cancel(s_animation_timer);
         s_animation_timer = NULL;
+    }
+    
+    // Clean up path resources
+    if (s_fish_tail_path) {
+        gpath_destroy(s_fish_tail_path);
+        s_fish_tail_path = NULL;
+    }
+    
+    if (s_turtle_front_flipper_path) {
+        gpath_destroy(s_turtle_front_flipper_path);
+        s_turtle_front_flipper_path = NULL;
+    }
+    
+    if (s_turtle_back_flipper_path) {
+        gpath_destroy(s_turtle_back_flipper_path);
+        s_turtle_back_flipper_path = NULL;
+    }
+    
+    if (s_shark_body_path) {
+        gpath_destroy(s_shark_body_path);
+        s_shark_body_path = NULL;
+    }
+    
+    if (s_shark_tail_path) {
+        gpath_destroy(s_shark_tail_path);
+        s_shark_tail_path = NULL;
+    }
+    
+    if (s_shark_fin_path) {
+        gpath_destroy(s_shark_fin_path);
+        s_shark_fin_path = NULL;
     }
     
     if (s_main_window) {
