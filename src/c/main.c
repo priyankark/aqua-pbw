@@ -152,8 +152,9 @@ static int random_in_range(int min, int max) {
     int range = max - min + 1;
     if (range <= 0) return min; // Overflow protection
     
-    // Use modulo for smaller range
-    return min + (rand() % range);
+    // Use modulo for smaller range with overflow protection
+    uint32_t random_val = (uint32_t)rand() % (uint32_t)range;
+    return min + (int)random_val;
 }
 
 // Initialize a fish with random position and speed
@@ -274,9 +275,9 @@ static void update_seahorse(Seahorse *seahorse) {
     seahorse->active = true;
 }
 
-// Draw fish
+// Draw fish with safety check
 static void draw_fish(GContext *ctx, const Fish *fish) {
-    if (!fish->active) return;
+    if (!fish || !fish->active) return;
     
     // Set fill color (white for B&W displays)
     graphics_context_set_fill_color(ctx, GColorWhite);
@@ -294,10 +295,17 @@ static void draw_fish(GContext *ctx, const Fish *fish) {
     s_fish_tail_points[2].x = fish->pos.x - (fish->direction * (size * 2));
     s_fish_tail_points[2].y = fish->pos.y + size;
     
-    // Update path points - no recreation needed
+    // Update path points and draw properly
     if (s_fish_tail_path) {
-        gpath_move_to(s_fish_tail_path, GPoint(0, 0));
-        gpath_draw_filled(ctx, s_fish_tail_path);
+        gpath_destroy(s_fish_tail_path);
+        GPathInfo fish_tail_info = {
+            .num_points = 3,
+            .points = s_fish_tail_points,
+        };
+        s_fish_tail_path = gpath_create(&fish_tail_info);
+        if (s_fish_tail_path) {
+            gpath_draw_filled(ctx, s_fish_tail_path);
+        }
     }
     
     // Add eye for big fish
@@ -333,17 +341,17 @@ static void draw_seaweed(GContext *ctx, const Seaweed *seaweed) {
     }
 }
 
-// Draw bubble
+// Draw bubbles with safety check
 static void draw_bubble(GContext *ctx, const Bubble *bubble) {
-    if (!bubble->active) return;
+    if (!bubble || !bubble->active) return;
     
     graphics_context_set_stroke_color(ctx, GColorWhite);
     graphics_draw_circle(ctx, bubble->pos, bubble->size);
 }
 
-// Draw plankton
+// Draw plankton with safety check
 static void draw_plankton(GContext *ctx, const Plankton *plankton) {
-    if (!plankton->active) return;
+    if (!plankton || !plankton->active) return;
     
     graphics_context_set_fill_color(ctx, GColorWhite);
     
@@ -393,8 +401,100 @@ static void draw_octopus(GContext *ctx, const Octopus *octopus) {
     }
 }
 
-// Draw turtle
+// Draw shark with safety check
+static void draw_shark(GContext *ctx, const Shark *shark) {
+    if (!shark || !shark->active) return;
+    
+    // Simple, classic shark design
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    
+    // Update shark body points
+    s_shark_body_points[0].x = shark->pos.x + (shark->direction * 15);
+    s_shark_body_points[0].y = shark->pos.y;        // nose
+    s_shark_body_points[1].x = shark->pos.x;
+    s_shark_body_points[1].y = shark->pos.y - 8;    // top of body
+    s_shark_body_points[2].x = shark->pos.x - (shark->direction * 15);
+    s_shark_body_points[2].y = shark->pos.y - 5;    // back top
+    s_shark_body_points[3].x = shark->pos.x - (shark->direction * 15);
+    s_shark_body_points[3].y = shark->pos.y + 5;    // back bottom
+    s_shark_body_points[4].x = shark->pos.x;
+    s_shark_body_points[4].y = shark->pos.y + 8;    // bottom of body
+    
+    // Update path with new points and draw
+    if (s_shark_body_path) {
+        gpath_destroy(s_shark_body_path);
+        GPathInfo shark_body_info = {
+            .num_points = 5,
+            .points = s_shark_body_points,
+        };
+        s_shark_body_path = gpath_create(&shark_body_info);
+        if (s_shark_body_path) {
+            gpath_draw_filled(ctx, s_shark_body_path);
+        }
+    }
+    
+    // Update tail points
+    s_shark_tail_points[0].x = shark->pos.x - (shark->direction * 15);
+    s_shark_tail_points[0].y = shark->pos.y - 5;
+    s_shark_tail_points[1].x = shark->pos.x - (shark->direction * 15);
+    s_shark_tail_points[1].y = shark->pos.y + 5;
+    s_shark_tail_points[2].x = shark->pos.x - (shark->direction * 25);
+    s_shark_tail_points[2].y = shark->pos.y;
+    
+    // Update path with new points and draw
+    if (s_shark_tail_path) {
+        gpath_destroy(s_shark_tail_path);
+        GPathInfo shark_tail_info = {
+            .num_points = 3,
+            .points = s_shark_tail_points,
+        };
+        s_shark_tail_path = gpath_create(&shark_tail_info);
+        if (s_shark_tail_path) {
+            gpath_draw_filled(ctx, s_shark_tail_path);
+        }
+    }
+    
+    // Update fin points
+    s_shark_fin_points[0].x = shark->pos.x - (shark->direction * 5);
+    s_shark_fin_points[0].y = shark->pos.y - 8;
+    s_shark_fin_points[1].x = shark->pos.x - (shark->direction * 5);
+    s_shark_fin_points[1].y = shark->pos.y - 16;
+    s_shark_fin_points[2].x = shark->pos.x + (shark->direction * 3);
+    s_shark_fin_points[2].y = shark->pos.y - 8;
+    
+    // Update path with new points and draw
+    if (s_shark_fin_path) {
+        gpath_destroy(s_shark_fin_path);
+        GPathInfo shark_fin_info = {
+            .num_points = 3,
+            .points = s_shark_fin_points,
+        };
+        s_shark_fin_path = gpath_create(&shark_fin_info);
+        if (s_shark_fin_path) {
+            gpath_draw_filled(ctx, s_shark_fin_path);
+        }
+    }
+    
+    // Draw eye
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    GPoint eye_pos = (GPoint){
+        shark->pos.x + (shark->direction * 8),
+        shark->pos.y - 2
+    };
+    graphics_fill_circle(ctx, eye_pos, 1);
+    
+    // Simple mouth line
+    graphics_context_set_stroke_color(ctx, GColorBlack);
+    graphics_context_set_stroke_width(ctx, 1);
+    graphics_draw_line(ctx, 
+                       (GPoint){shark->pos.x + (shark->direction * 14), shark->pos.y + 2},
+                       (GPoint){shark->pos.x + (shark->direction * 6), shark->pos.y + 3});
+}
+
+// Draw turtle with safety check
 static void draw_turtle(GContext *ctx, const Turtle *turtle) {
+    if (!turtle) return;
+    
     graphics_context_set_fill_color(ctx, GColorWhite);
     graphics_context_set_stroke_color(ctx, GColorWhite);
     
@@ -461,20 +561,37 @@ static void draw_turtle(GContext *ctx, const Turtle *turtle) {
     s_turtle_back_flipper_points[2].x = turtle->pos.x - (turtle->direction * (10 - flipper_offset));
     s_turtle_back_flipper_points[2].y = turtle->pos.y + 5;
     
-    // Draw flippers using existing paths
+    // Update and draw front flipper path
     if (s_turtle_front_flipper_path) {
-        gpath_move_to(s_turtle_front_flipper_path, GPoint(0, 0));
-        gpath_draw_filled(ctx, s_turtle_front_flipper_path);
+        gpath_destroy(s_turtle_front_flipper_path);
+        GPathInfo turtle_front_flipper_info = {
+            .num_points = 3,
+            .points = s_turtle_front_flipper_points,
+        };
+        s_turtle_front_flipper_path = gpath_create(&turtle_front_flipper_info);
+        if (s_turtle_front_flipper_path) {
+            gpath_draw_filled(ctx, s_turtle_front_flipper_path);
+        }
     }
     
+    // Update and draw back flipper path
     if (s_turtle_back_flipper_path) {
-        gpath_move_to(s_turtle_back_flipper_path, GPoint(0, 0));
-        gpath_draw_filled(ctx, s_turtle_back_flipper_path);
+        gpath_destroy(s_turtle_back_flipper_path);
+        GPathInfo turtle_back_flipper_info = {
+            .num_points = 3,
+            .points = s_turtle_back_flipper_points,
+        };
+        s_turtle_back_flipper_path = gpath_create(&turtle_back_flipper_info);
+        if (s_turtle_back_flipper_path) {
+            gpath_draw_filled(ctx, s_turtle_back_flipper_path);
+        }
     }
 }
 
-// Draw jellyfish
+// Draw jellyfish with safety check
 static void draw_jellyfish(GContext *ctx, const Jellyfish *jellyfish) {
+    if (!jellyfish) return;
+    
     graphics_context_set_fill_color(ctx, GColorWhite);
     graphics_context_set_stroke_color(ctx, GColorWhite);
     
@@ -584,75 +701,6 @@ static void draw_clam(GContext *ctx, const Clam *clam) {
         GPoint pearl_pos = (GPoint){clam->pos.x, clam->pos.y - 2};
         graphics_fill_circle(ctx, pearl_pos, 1);
     }
-}
-
-// Draw shark
-static void draw_shark(GContext *ctx, const Shark *shark) {
-    if (!shark->active) return;
-    
-    // Simple, classic shark design
-    graphics_context_set_fill_color(ctx, GColorWhite);
-    
-    // Update shark body points
-    s_shark_body_points[0].x = shark->pos.x + (shark->direction * 15);
-    s_shark_body_points[0].y = shark->pos.y;        // nose
-    s_shark_body_points[1].x = shark->pos.x;
-    s_shark_body_points[1].y = shark->pos.y - 8;    // top of body
-    s_shark_body_points[2].x = shark->pos.x - (shark->direction * 15);
-    s_shark_body_points[2].y = shark->pos.y - 5;    // back top
-    s_shark_body_points[3].x = shark->pos.x - (shark->direction * 15);
-    s_shark_body_points[3].y = shark->pos.y + 5;    // back bottom
-    s_shark_body_points[4].x = shark->pos.x;
-    s_shark_body_points[4].y = shark->pos.y + 8;    // bottom of body
-    
-    // Draw using existing path
-    if (s_shark_body_path) {
-        gpath_move_to(s_shark_body_path, GPoint(0, 0));
-        gpath_draw_filled(ctx, s_shark_body_path);
-    }
-    
-    // Update tail points
-    s_shark_tail_points[0].x = shark->pos.x - (shark->direction * 15);
-    s_shark_tail_points[0].y = shark->pos.y - 5;
-    s_shark_tail_points[1].x = shark->pos.x - (shark->direction * 15);
-    s_shark_tail_points[1].y = shark->pos.y + 5;
-    s_shark_tail_points[2].x = shark->pos.x - (shark->direction * 25);
-    s_shark_tail_points[2].y = shark->pos.y;
-    
-    // Draw using existing path
-    if (s_shark_tail_path) {
-        gpath_move_to(s_shark_tail_path, GPoint(0, 0));
-        gpath_draw_filled(ctx, s_shark_tail_path);
-    }
-    
-    // Update fin points
-    s_shark_fin_points[0].x = shark->pos.x - (shark->direction * 5);
-    s_shark_fin_points[0].y = shark->pos.y - 8;
-    s_shark_fin_points[1].x = shark->pos.x - (shark->direction * 5);
-    s_shark_fin_points[1].y = shark->pos.y - 16;
-    s_shark_fin_points[2].x = shark->pos.x + (shark->direction * 3);
-    s_shark_fin_points[2].y = shark->pos.y - 8;
-    
-    // Draw using existing path
-    if (s_shark_fin_path) {
-        gpath_move_to(s_shark_fin_path, GPoint(0, 0));
-        gpath_draw_filled(ctx, s_shark_fin_path);
-    }
-    
-    // Draw eye
-    graphics_context_set_fill_color(ctx, GColorBlack);
-    GPoint eye_pos = (GPoint){
-        shark->pos.x + (shark->direction * 8),
-        shark->pos.y - 2
-    };
-    graphics_fill_circle(ctx, eye_pos, 1);
-    
-    // Simple mouth line
-    graphics_context_set_stroke_color(ctx, GColorBlack);
-    graphics_context_set_stroke_width(ctx, 1);
-    graphics_draw_line(ctx, 
-                       (GPoint){shark->pos.x + (shark->direction * 14), shark->pos.y + 2},
-                       (GPoint){shark->pos.x + (shark->direction * 6), shark->pos.y + 3});
 }
 
 // Draw seahorse
@@ -828,8 +876,8 @@ static void update_spatial_grid() {
             int cell = get_grid_cell(s_fish[i].pos);
             s_fish[i].grid_cell = cell;
             
-            // Add to grid if there's space
-            if (s_fish_grid_counts[cell] < MAX_FISH + MAX_BIG_FISH) {
+            // Bounds check to prevent buffer overflow
+            if (cell >= 0 && cell < GRID_CELL_COUNT && s_fish_grid_counts[cell] < MAX_FISH + MAX_BIG_FISH) {
                 s_fish_in_grid[cell][s_fish_grid_counts[cell]] = i;
                 s_fish_grid_counts[cell]++;
             }
@@ -948,6 +996,9 @@ static void animation_update(void) {
         
         int cell = s_fish[i].grid_cell;
         
+        // Ensure valid cell before checking
+        if (cell < 0 || cell >= GRID_CELL_COUNT) continue;
+        
         // Check fish in same cell and adjacent cells
         for (int cell_y = -1; cell_y <= 1; cell_y++) {
             for (int cell_x = -1; cell_x <= 1; cell_x++) {
@@ -962,9 +1013,18 @@ static void animation_update(void) {
                 
                 int target_cell = target_cell_y * GRID_WIDTH + target_cell_x;
                 
-                // Check all small fish in this cell
+                // Bounds check
+                if (target_cell < 0 || target_cell >= GRID_CELL_COUNT) continue;
+                
+                // Check all fish in this cell with strict bounds checking
                 for (int k = 0; k < s_fish_grid_counts[target_cell]; k++) {
+                    // Double-check we're accessing a valid fish
+                    if (k >= MAX_FISH + MAX_BIG_FISH) break;
+                    
                     int j = s_fish_in_grid[target_cell][k];
+                    
+                    // Strict bounds check for array access
+                    if (j < 0 || j >= MAX_FISH + MAX_BIG_FISH) continue;
                     
                     // Only check small fish that are active
                     if (j < MAX_FISH && s_fish[j].active && s_fish[j].size == 1) {
@@ -1146,18 +1206,45 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 static void animation_timer_callback(void *data) {
     animation_update();
     
-    // Register next timer and store the handle
     // Use slower animation interval if battery is low
     uint32_t next_interval = (s_battery_level <= LOW_BATTERY_THRESHOLD && !s_is_charging) ? 
                              ANIMATION_INTERVAL_LOW_POWER : ANIMATION_INTERVAL;
     
-    // Important: null check before registering new timer
-    AppTimer *new_timer = app_timer_register(next_interval, animation_timer_callback, NULL);
-    if (new_timer) {
-        s_animation_timer = new_timer;
-    } else {
-        // Timer creation failed - attempt recovery
-        s_animation_timer = app_timer_register(next_interval * 2, animation_timer_callback, NULL);
+    // Critical error handling - ensure animation always continues
+    uint8_t retry_count = 0;
+    const uint8_t MAX_RETRY = 3;
+    AppTimer *new_timer = NULL;
+    
+    // Try to register a new timer with exponential backoff
+    while (retry_count < MAX_RETRY && new_timer == NULL) {
+        // Calculate backoff interval - increase interval on retries
+        uint32_t backoff_interval = next_interval * (1 << retry_count);
+        
+        // Cap maximum interval to prevent overflow
+        if (backoff_interval > 3000) {
+            backoff_interval = 3000;  // Cap at 3 seconds max
+        }
+        
+        new_timer = app_timer_register(backoff_interval, animation_timer_callback, NULL);
+        retry_count++;
+        
+        // If registered successfully, store the timer
+        if (new_timer != NULL) {
+            s_animation_timer = new_timer;
+            break;
+        }
+    }
+    
+    // Failsafe - if all retries failed, use a safe interval as last resort
+    if (new_timer == NULL) {
+        // Use a conservative fallback value (500ms) as absolute failsafe
+        s_animation_timer = app_timer_register(500, animation_timer_callback, NULL);
+        
+        // If this also fails, watchface will have jerky animations but won't freeze
+        if (s_animation_timer == NULL) {
+            // Last resort: try once more with minimum viable interval
+            s_animation_timer = app_timer_register(100, animation_timer_callback, NULL);
+        }
     }
 }
 
