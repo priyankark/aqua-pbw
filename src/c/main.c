@@ -99,6 +99,14 @@ static GPath *s_shark_body_path = NULL;
 static GPath *s_shark_tail_path = NULL;
 static GPath *s_shark_fin_path = NULL;
 
+// Points arrays for path objects
+static GPoint s_fish_tail_points[3];
+static GPoint s_turtle_front_flipper_points[3];
+static GPoint s_turtle_back_flipper_points[3];
+static GPoint s_shark_body_points[5];
+static GPoint s_shark_tail_points[3];
+static GPoint s_shark_fin_points[3];
+
 // Animation elements
 #define MAX_FISH 5         // Increased for more fish
 #define MAX_BIG_FISH 2     // Big fish that eat small fish
@@ -253,6 +261,9 @@ static void init_clam(Clam *clam) {
 static void update_seahorse(Seahorse *seahorse);
 static void update_crab(Crab *crab);
 static void update_clam(Clam *clam);
+static void update_turtle(Turtle *turtle);
+static void update_jellyfish(Jellyfish *jellyfish);
+static void update_octopus(Octopus *octopus);
 
 // Update seahorse
 static void update_seahorse(Seahorse *seahorse) {
@@ -276,26 +287,16 @@ static void draw_fish(GContext *ctx, const Fish *fish) {
     graphics_fill_circle(ctx, fish->pos, size);
     
     // Tail
-    GPoint tail_points[3];
-    tail_points[0].x = fish->pos.x - (fish->direction * size);
-    tail_points[0].y = fish->pos.y;
-    tail_points[1].x = fish->pos.x - (fish->direction * (size * 2));
-    tail_points[1].y = fish->pos.y - size;
-    tail_points[2].x = fish->pos.x - (fish->direction * (size * 2));
-    tail_points[2].y = fish->pos.y + size;
+    s_fish_tail_points[0].x = fish->pos.x - (fish->direction * size);
+    s_fish_tail_points[0].y = fish->pos.y;
+    s_fish_tail_points[1].x = fish->pos.x - (fish->direction * (size * 2));
+    s_fish_tail_points[1].y = fish->pos.y - size;
+    s_fish_tail_points[2].x = fish->pos.x - (fish->direction * (size * 2));
+    s_fish_tail_points[2].y = fish->pos.y + size;
     
-    // Update the path with new points instead of creating/destroying
+    // Update path points - no recreation needed
     if (s_fish_tail_path) {
-        gpath_destroy(s_fish_tail_path);
-    }
-    
-    // Create path for tail
-    GPathInfo path_info;
-    path_info.num_points = 3;
-    path_info.points = tail_points;
-    
-    s_fish_tail_path = gpath_create(&path_info);
-    if (s_fish_tail_path) {
+        gpath_move_to(s_fish_tail_path, GPoint(0, 0));
         gpath_draw_filled(ctx, s_fish_tail_path);
     }
     
@@ -444,42 +445,30 @@ static void draw_turtle(GContext *ctx, const Turtle *turtle) {
     // Draw flippers
     graphics_context_set_fill_color(ctx, GColorWhite);
     
-    // Front flipper
-    GPoint front_flipper[3] = {
-        {turtle->pos.x + (turtle->direction * 5), turtle->pos.y - 2},
-        {turtle->pos.x + (turtle->direction * 5), turtle->pos.y + 6},
-        {turtle->pos.x + (turtle->direction * (10 + flipper_offset)), turtle->pos.y + 5}
-    };
+    // Front flipper - update points
+    s_turtle_front_flipper_points[0].x = turtle->pos.x + (turtle->direction * 5);
+    s_turtle_front_flipper_points[0].y = turtle->pos.y - 2;
+    s_turtle_front_flipper_points[1].x = turtle->pos.x + (turtle->direction * 5);
+    s_turtle_front_flipper_points[1].y = turtle->pos.y + 6;
+    s_turtle_front_flipper_points[2].x = turtle->pos.x + (turtle->direction * (10 + flipper_offset));
+    s_turtle_front_flipper_points[2].y = turtle->pos.y + 5;
     
-    // Back flipper
-    GPoint back_flipper[3] = {
-        {turtle->pos.x - (turtle->direction * 5), turtle->pos.y - 2},
-        {turtle->pos.x - (turtle->direction * 5), turtle->pos.y + 6},
-        {turtle->pos.x - (turtle->direction * (10 - flipper_offset)), turtle->pos.y + 5}
-    };
+    // Back flipper - update points
+    s_turtle_back_flipper_points[0].x = turtle->pos.x - (turtle->direction * 5);
+    s_turtle_back_flipper_points[0].y = turtle->pos.y - 2;
+    s_turtle_back_flipper_points[1].x = turtle->pos.x - (turtle->direction * 5);
+    s_turtle_back_flipper_points[1].y = turtle->pos.y + 6;
+    s_turtle_back_flipper_points[2].x = turtle->pos.x - (turtle->direction * (10 - flipper_offset));
+    s_turtle_back_flipper_points[2].y = turtle->pos.y + 5;
     
-    // Clean up previous paths if they exist
+    // Draw flippers using existing paths
     if (s_turtle_front_flipper_path) {
-        gpath_destroy(s_turtle_front_flipper_path);
-    }
-    
-    if (s_turtle_back_flipper_path) {
-        gpath_destroy(s_turtle_back_flipper_path);
-    }
-    
-    // Draw flippers
-    GPathInfo path_info;
-    path_info.num_points = 3;
-    
-    path_info.points = front_flipper;
-    s_turtle_front_flipper_path = gpath_create(&path_info);
-    if (s_turtle_front_flipper_path) {
+        gpath_move_to(s_turtle_front_flipper_path, GPoint(0, 0));
         gpath_draw_filled(ctx, s_turtle_front_flipper_path);
     }
     
-    path_info.points = back_flipper;
-    s_turtle_back_flipper_path = gpath_create(&path_info);
     if (s_turtle_back_flipper_path) {
+        gpath_move_to(s_turtle_back_flipper_path, GPoint(0, 0));
         gpath_draw_filled(ctx, s_turtle_back_flipper_path);
     }
 }
@@ -604,68 +593,49 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
     // Simple, classic shark design
     graphics_context_set_fill_color(ctx, GColorWhite);
     
-    // Draw shark body - triangular front
-    GPoint body_points[5] = {
-        {shark->pos.x + (shark->direction * 15), shark->pos.y},        // nose
-        {shark->pos.x, shark->pos.y - 8},                              // top of body
-        {shark->pos.x - (shark->direction * 15), shark->pos.y - 5},    // back top
-        {shark->pos.x - (shark->direction * 15), shark->pos.y + 5},    // back bottom
-        {shark->pos.x, shark->pos.y + 8}                               // bottom of body
-    };
+    // Update shark body points
+    s_shark_body_points[0].x = shark->pos.x + (shark->direction * 15);
+    s_shark_body_points[0].y = shark->pos.y;        // nose
+    s_shark_body_points[1].x = shark->pos.x;
+    s_shark_body_points[1].y = shark->pos.y - 8;    // top of body
+    s_shark_body_points[2].x = shark->pos.x - (shark->direction * 15);
+    s_shark_body_points[2].y = shark->pos.y - 5;    // back top
+    s_shark_body_points[3].x = shark->pos.x - (shark->direction * 15);
+    s_shark_body_points[3].y = shark->pos.y + 5;    // back bottom
+    s_shark_body_points[4].x = shark->pos.x;
+    s_shark_body_points[4].y = shark->pos.y + 8;    // bottom of body
     
-    // Clean up previous paths if they exist
+    // Draw using existing path
     if (s_shark_body_path) {
-        gpath_destroy(s_shark_body_path);
-    }
-    
-    GPathInfo body_path;
-    body_path.num_points = 5;
-    body_path.points = body_points;
-    
-    s_shark_body_path = gpath_create(&body_path);
-    if (s_shark_body_path) {
+        gpath_move_to(s_shark_body_path, GPoint(0, 0));
         gpath_draw_filled(ctx, s_shark_body_path);
     }
     
-    // Draw tail
-    GPoint tail_points[3] = {
-        {shark->pos.x - (shark->direction * 15), shark->pos.y - 5},
-        {shark->pos.x - (shark->direction * 15), shark->pos.y + 5},
-        {shark->pos.x - (shark->direction * 25), shark->pos.y}
-    };
+    // Update tail points
+    s_shark_tail_points[0].x = shark->pos.x - (shark->direction * 15);
+    s_shark_tail_points[0].y = shark->pos.y - 5;
+    s_shark_tail_points[1].x = shark->pos.x - (shark->direction * 15);
+    s_shark_tail_points[1].y = shark->pos.y + 5;
+    s_shark_tail_points[2].x = shark->pos.x - (shark->direction * 25);
+    s_shark_tail_points[2].y = shark->pos.y;
     
-    // Clean up previous path if it exists
+    // Draw using existing path
     if (s_shark_tail_path) {
-        gpath_destroy(s_shark_tail_path);
-    }
-    
-    GPathInfo tail_path;
-    tail_path.num_points = 3;
-    tail_path.points = tail_points;
-    
-    s_shark_tail_path = gpath_create(&tail_path);
-    if (s_shark_tail_path) {
+        gpath_move_to(s_shark_tail_path, GPoint(0, 0));
         gpath_draw_filled(ctx, s_shark_tail_path);
     }
     
-    // Draw dorsal fin
-    GPoint fin_points[3] = {
-        {shark->pos.x - (shark->direction * 5), shark->pos.y - 8},
-        {shark->pos.x - (shark->direction * 5), shark->pos.y - 16},
-        {shark->pos.x + (shark->direction * 3), shark->pos.y - 8}
-    };
+    // Update fin points
+    s_shark_fin_points[0].x = shark->pos.x - (shark->direction * 5);
+    s_shark_fin_points[0].y = shark->pos.y - 8;
+    s_shark_fin_points[1].x = shark->pos.x - (shark->direction * 5);
+    s_shark_fin_points[1].y = shark->pos.y - 16;
+    s_shark_fin_points[2].x = shark->pos.x + (shark->direction * 3);
+    s_shark_fin_points[2].y = shark->pos.y - 8;
     
-    // Clean up previous path if it exists
+    // Draw using existing path
     if (s_shark_fin_path) {
-        gpath_destroy(s_shark_fin_path);
-    }
-    
-    GPathInfo fin_path;
-    fin_path.num_points = 3;
-    fin_path.points = fin_points;
-    
-    s_shark_fin_path = gpath_create(&fin_path);
-    if (s_shark_fin_path) {
+        gpath_move_to(s_shark_fin_path, GPoint(0, 0));
         gpath_draw_filled(ctx, s_shark_fin_path);
     }
     
@@ -1001,21 +971,16 @@ static void animation_update(void) {
                         if (check_collision(s_fish[i].pos, 7, s_fish[j].pos, 4)) {
                             s_fish[j].active = false;  // Small fish gets eaten
                             
-                            // Create bubbles for eating event
-                            for (int b = 0; b < 3; b++) {
-                                bool bubble_created = false;
-                                for (int k = 0; k < MAX_BUBBLES; k++) {
-                                    if (!s_bubbles[k].active) {
-                                        s_bubbles[k].pos = s_fish[j].pos;
-                                        s_bubbles[k].size = random_in_range(1, 2);
-                                        s_bubbles[k].speed = random_in_range(1, 2);
-                                        s_bubbles[k].active = true;
-                                        bubble_created = true;
-                                        break;
-                                    }
+                            // Create bubbles for eating event - limit to available bubbles
+                            int bubbles_created = 0;
+                            for (int b = 0; b < MAX_BUBBLES && bubbles_created < 3; b++) {
+                                if (!s_bubbles[b].active) {
+                                    s_bubbles[b].pos = s_fish[j].pos;
+                                    s_bubbles[b].size = random_in_range(1, 2);
+                                    s_bubbles[b].speed = random_in_range(1, 2);
+                                    s_bubbles[b].active = true;
+                                    bubbles_created++;
                                 }
-                                // If no inactive bubbles found, stop trying
-                                if (!bubble_created) break;
                             }
                         }
                     }
@@ -1024,9 +989,9 @@ static void animation_update(void) {
         }
     }
     
-    // Check for respawning fish
+    // Check for respawning fish - limit checks to reduce CPU usage
     for (int i = 0; i < MAX_FISH; i++) {
-        if (!s_fish[i].active && (random_in_range(0, 49) == 0)) {
+        if (!s_fish[i].active && (random_in_range(0, 99) < 2)) { // 2% chance instead of complex comparison
             init_fish(&s_fish[i], 1);  // Reinitialize with size 1 (small fish)
         }
     }
@@ -1035,9 +1000,7 @@ static void animation_update(void) {
     for (int i = 0; i < MAX_SEAWEED; i++) {
         s_seaweed[i].offset += s_seaweed[i].speed * 100;
         // Protect against integer overflow
-        if (s_seaweed[i].offset < 0 || s_seaweed[i].offset >= TRIG_MAX_ANGLE) {
-            s_seaweed[i].offset %= TRIG_MAX_ANGLE;
-        }
+        s_seaweed[i].offset %= TRIG_MAX_ANGLE;
     }
     
     // Update bubbles
@@ -1054,7 +1017,7 @@ static void animation_update(void) {
             if (s_bubbles[i].pos.y < 0) {
                 s_bubbles[i].active = false;
             }
-        } else if (random_in_range(0, 99) < 2) {  // 2% chance to create a new bubble
+        } else if (random_in_range(0, 199) < 2) {  // Reduced chance to 1% from 2%
             init_bubble(&s_bubbles[i]);
         }
     }
@@ -1073,98 +1036,47 @@ static void animation_update(void) {
             if (s_plankton[i].pos.x > 144) s_plankton[i].pos.x = 144;
             if (s_plankton[i].pos.y < 0) s_plankton[i].pos.y = 0;
             if (s_plankton[i].pos.y > 168) s_plankton[i].pos.y = 168;
-        } else if (random_in_range(0, 99) < 3) {  // 3% chance to create new plankton
+        } else if (random_in_range(0, 199) < 3) {  // Reduced chance to 1.5%
             init_plankton(&s_plankton[i]);
         }
     }
     
     // Update turtle
     for (int i = 0; i < MAX_TURTLES; i++) {
-        s_turtles[i].pos.x += s_turtles[i].direction * s_turtles[i].speed;
-        s_turtles[i].animation_offset += s_turtles[i].speed * 200;
-        // Protect against integer overflow
-        if (s_turtles[i].animation_offset < 0 || s_turtles[i].animation_offset > 2*TRIG_MAX_ANGLE) {
-            s_turtles[i].animation_offset %= TRIG_MAX_ANGLE;
-        }
-        
-        // Reset turtle if it swims off screen
-        if ((s_turtles[i].direction == 1 && s_turtles[i].pos.x > 144) ||
-            (s_turtles[i].direction == -1 && s_turtles[i].pos.x < -15)) {
-            init_turtle(&s_turtles[i]);
-        }
+        update_turtle(&s_turtles[i]);
     }
     
     // Update jellyfish
     for (int i = 0; i < MAX_JELLYFISH; i++) {
-        s_jellyfish[i].tentacle_offset += s_jellyfish[i].speed * 100;
-        // Protect against integer overflow
-        if (s_jellyfish[i].tentacle_offset < 0 || s_jellyfish[i].tentacle_offset >= TRIG_MAX_ANGLE) {
-            s_jellyfish[i].tentacle_offset %= TRIG_MAX_ANGLE;
-        }
-        
-        // Update pulse animation
-        s_jellyfish[i].pulse_state = (s_jellyfish[i].pulse_state + 1) % 100;
-        
-        // Move jellyfish slightly up when pulsing (middle of animation)
-        if (s_jellyfish[i].pulse_state == 50) {
-            s_jellyfish[i].pos.y -= 2;
-            if (s_jellyfish[i].pos.y < 60) s_jellyfish[i].pos.y = 60;
-        }
-        
-        // Random side movement
-        if (random_in_range(0, 19) == 0) {
-            s_jellyfish[i].pos.x += random_in_range(-1, 1);
-            
-            // Keep in bounds
-            if (s_jellyfish[i].pos.x < 10) s_jellyfish[i].pos.x = 10;
-            if (s_jellyfish[i].pos.x > 134) s_jellyfish[i].pos.x = 134;
-        }
+        update_jellyfish(&s_jellyfish[i]);
     }
     
     // Update octopus
-    s_octopus.tentacle_offset += s_octopus.speed * 50;
-    // Protect against integer overflow
-    if (s_octopus.tentacle_offset < 0 || s_octopus.tentacle_offset >= TRIG_MAX_ANGLE) {
-        s_octopus.tentacle_offset %= TRIG_MAX_ANGLE;
-    }
-    
-    // Slow movement for octopus
-    if (random_in_range(0, 9) == 0) {
-        s_octopus.pos.x += random_in_range(-1, 1);
-        
-        // Keep octopus in bounds
-        if (s_octopus.pos.x < 10) s_octopus.pos.x = 10;
-        if (s_octopus.pos.x > 134) s_octopus.pos.x = 134;
-    }
+    update_octopus(&s_octopus);
     
     // Update shark
     if (s_shark.active) {
         // Move shark
         s_shark.pos.x += s_shark.direction * s_shark.speed;
         
-        // Check for shark eating fish
-        for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
+        // Check for shark eating fish - limit checks per frame
+        int fish_eaten = 0;
+        for (int i = 0; i < MAX_FISH + MAX_BIG_FISH && fish_eaten < 2; i++) {
             if (s_fish[i].active) {
                 if (abs(s_shark.pos.x - s_fish[i].pos.x) < 20 && 
                     abs(s_shark.pos.y - s_fish[i].pos.y) < 12) {
                     s_fish[i].active = false;  // Fish gets eaten
+                    fish_eaten++;
                     
-                    // Create bubbles to mark the eating event
-                    for (int b = 0; b < 5; b++) {
-                        bool bubble_created = false;
-                        for (int k = 0; k < MAX_BUBBLES; k++) {
-                            if (!s_bubbles[k].active) {
-                                s_bubbles[k].pos = s_fish[i].pos;
-                                s_bubbles[k].size = random_in_range(1, 3);
-                                s_bubbles[k].speed = random_in_range(1, 3);
-                                s_bubbles[k].active = true;
-                                bubble_created = true;
-                                break;
-                            }
-                        }
-                        // If no inactive bubbles were found, stop trying
-                        if (!bubble_created) {
-                            break;
+                    // Create bubbles to mark the eating event - limit bubbles
+                    int bubbles_created = 0;
+                    for (int b = 0; b < MAX_BUBBLES && bubbles_created < 3; b++) {
+                        if (!s_bubbles[b].active) {
+                            s_bubbles[b].pos = s_fish[i].pos;
+                            s_bubbles[b].size = random_in_range(1, 3);
+                            s_bubbles[b].speed = random_in_range(1, 3);
+                            s_bubbles[b].active = true;
+                            bubbles_created++;
                         }
                     }
                 }
@@ -1239,7 +1151,14 @@ static void animation_timer_callback(void *data) {
     uint32_t next_interval = (s_battery_level <= LOW_BATTERY_THRESHOLD && !s_is_charging) ? 
                              ANIMATION_INTERVAL_LOW_POWER : ANIMATION_INTERVAL;
     
-    s_animation_timer = app_timer_register(next_interval, animation_timer_callback, NULL);
+    // Important: null check before registering new timer
+    AppTimer *new_timer = app_timer_register(next_interval, animation_timer_callback, NULL);
+    if (new_timer) {
+        s_animation_timer = new_timer;
+    } else {
+        // Timer creation failed - attempt recovery
+        s_animation_timer = app_timer_register(next_interval * 2, animation_timer_callback, NULL);
+    }
 }
 
 // Update crab animation
@@ -1274,6 +1193,61 @@ static void battery_callback(BatteryChargeState charge_state) {
     // Request redraw of battery indicator
     if (s_battery_layer) {
         layer_mark_dirty(s_battery_layer);
+    }
+}
+
+// Update turtle
+static void update_turtle(Turtle *turtle) {
+    turtle->pos.x += turtle->direction * turtle->speed;
+    turtle->animation_offset += turtle->speed * 200;
+    // Protect against integer overflow
+    turtle->animation_offset %= TRIG_MAX_ANGLE;
+    
+    // Reset turtle if it swims off screen
+    if ((turtle->direction == 1 && turtle->pos.x > 144) ||
+        (turtle->direction == -1 && turtle->pos.x < -15)) {
+        init_turtle(turtle);
+    }
+}
+
+// Update jellyfish
+static void update_jellyfish(Jellyfish *jellyfish) {
+    jellyfish->tentacle_offset += jellyfish->speed * 100;
+    // Protect against integer overflow
+    jellyfish->tentacle_offset %= TRIG_MAX_ANGLE;
+    
+    // Update pulse animation
+    jellyfish->pulse_state = (jellyfish->pulse_state + 1) % 100;
+    
+    // Move jellyfish slightly up when pulsing (middle of animation)
+    if (jellyfish->pulse_state == 50) {
+        jellyfish->pos.y -= 2;
+        if (jellyfish->pos.y < 60) jellyfish->pos.y = 60;
+    }
+    
+    // Random side movement
+    if (random_in_range(0, 19) == 0) {
+        jellyfish->pos.x += random_in_range(-1, 1);
+        
+        // Keep in bounds
+        if (jellyfish->pos.x < 10) jellyfish->pos.x = 10;
+        if (jellyfish->pos.x > 134) jellyfish->pos.x = 134;
+    }
+}
+
+// Update octopus
+static void update_octopus(Octopus *octopus) {
+    octopus->tentacle_offset += octopus->speed * 50;
+    // Protect against integer overflow
+    octopus->tentacle_offset %= TRIG_MAX_ANGLE;
+    
+    // Slow movement for octopus
+    if (random_in_range(0, 9) == 0) {
+        octopus->pos.x += random_in_range(-1, 1);
+        
+        // Keep octopus in bounds
+        if (octopus->pos.x < 10) octopus->pos.x = 10;
+        if (octopus->pos.x > 134) octopus->pos.x = 134;
     }
 }
 
@@ -1395,8 +1369,52 @@ static void main_window_load(Window *window) {
     // Initialize clam
     init_clam(&s_clam);
     
-    // Start animation timer
+    // Create and initialize paths once
+    // Fish tail path
+    GPathInfo fish_tail_info = {
+        .num_points = 3,
+        .points = s_fish_tail_points,
+    };
+    s_fish_tail_path = gpath_create(&fish_tail_info);
+    
+    // Turtle flipper paths
+    GPathInfo turtle_front_flipper_info = {
+        .num_points = 3,
+        .points = s_turtle_front_flipper_points,
+    };
+    s_turtle_front_flipper_path = gpath_create(&turtle_front_flipper_info);
+    
+    GPathInfo turtle_back_flipper_info = {
+        .num_points = 3,
+        .points = s_turtle_back_flipper_points,
+    };
+    s_turtle_back_flipper_path = gpath_create(&turtle_back_flipper_info);
+    
+    // Shark paths
+    GPathInfo shark_body_info = {
+        .num_points = 5,
+        .points = s_shark_body_points,
+    };
+    s_shark_body_path = gpath_create(&shark_body_info);
+    
+    GPathInfo shark_tail_info = {
+        .num_points = 3,
+        .points = s_shark_tail_points,
+    };
+    s_shark_tail_path = gpath_create(&shark_tail_info);
+    
+    GPathInfo shark_fin_info = {
+        .num_points = 3,
+        .points = s_shark_fin_points,
+    };
+    s_shark_fin_path = gpath_create(&shark_fin_info);
+    
+    // Start animation timer with error checking
     s_animation_timer = app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
+    if (!s_animation_timer) {
+        // If timer creation fails, try again with longer interval
+        s_animation_timer = app_timer_register(ANIMATION_INTERVAL * 2, animation_timer_callback, NULL);
+    }
     
     // Update time immediately
     update_time();
