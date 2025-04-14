@@ -269,6 +269,7 @@ static void update_octopus(Octopus *octopus);
 // Update seahorse
 static void update_seahorse(Seahorse *seahorse) {
     // Only animate the seahorse's body with gentle swaying
+    // Apply modulo immediately to prevent overflow
     seahorse->curve_state = (seahorse->curve_state + 1) % TRIG_MAX_ANGLE;
     
     // Always keep active
@@ -295,17 +296,10 @@ static void draw_fish(GContext *ctx, const Fish *fish) {
     s_fish_tail_points[2].x = fish->pos.x - (fish->direction * (size * 2));
     s_fish_tail_points[2].y = fish->pos.y + size;
     
-    // Update path points and draw properly
+    // Update path points WITHOUT destroying and recreating
     if (s_fish_tail_path) {
-        gpath_destroy(s_fish_tail_path);
-        GPathInfo fish_tail_info = {
-            .num_points = 3,
-            .points = s_fish_tail_points,
-        };
-        s_fish_tail_path = gpath_create(&fish_tail_info);
-        if (s_fish_tail_path) {
-            gpath_draw_filled(ctx, s_fish_tail_path);
-        }
+        gpath_move_to(s_fish_tail_path, GPoint(0, 0));
+        gpath_draw_filled(ctx, s_fish_tail_path);
     }
     
     // Add eye for big fish
@@ -420,17 +414,10 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
     s_shark_body_points[4].x = shark->pos.x;
     s_shark_body_points[4].y = shark->pos.y + 8;    // bottom of body
     
-    // Update path with new points and draw
+    // Update path WITHOUT destroying and recreating
     if (s_shark_body_path) {
-        gpath_destroy(s_shark_body_path);
-        GPathInfo shark_body_info = {
-            .num_points = 5,
-            .points = s_shark_body_points,
-        };
-        s_shark_body_path = gpath_create(&shark_body_info);
-        if (s_shark_body_path) {
-            gpath_draw_filled(ctx, s_shark_body_path);
-        }
+        gpath_move_to(s_shark_body_path, GPoint(0, 0));
+        gpath_draw_filled(ctx, s_shark_body_path);
     }
     
     // Update tail points
@@ -441,17 +428,10 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
     s_shark_tail_points[2].x = shark->pos.x - (shark->direction * 25);
     s_shark_tail_points[2].y = shark->pos.y;
     
-    // Update path with new points and draw
+    // Update path WITHOUT destroying and recreating
     if (s_shark_tail_path) {
-        gpath_destroy(s_shark_tail_path);
-        GPathInfo shark_tail_info = {
-            .num_points = 3,
-            .points = s_shark_tail_points,
-        };
-        s_shark_tail_path = gpath_create(&shark_tail_info);
-        if (s_shark_tail_path) {
-            gpath_draw_filled(ctx, s_shark_tail_path);
-        }
+        gpath_move_to(s_shark_tail_path, GPoint(0, 0));
+        gpath_draw_filled(ctx, s_shark_tail_path);
     }
     
     // Update fin points
@@ -462,17 +442,10 @@ static void draw_shark(GContext *ctx, const Shark *shark) {
     s_shark_fin_points[2].x = shark->pos.x + (shark->direction * 3);
     s_shark_fin_points[2].y = shark->pos.y - 8;
     
-    // Update path with new points and draw
+    // Update path WITHOUT destroying and recreating
     if (s_shark_fin_path) {
-        gpath_destroy(s_shark_fin_path);
-        GPathInfo shark_fin_info = {
-            .num_points = 3,
-            .points = s_shark_fin_points,
-        };
-        s_shark_fin_path = gpath_create(&shark_fin_info);
-        if (s_shark_fin_path) {
-            gpath_draw_filled(ctx, s_shark_fin_path);
-        }
+        gpath_move_to(s_shark_fin_path, GPoint(0, 0));
+        gpath_draw_filled(ctx, s_shark_fin_path);
     }
     
     // Draw eye
@@ -561,30 +534,16 @@ static void draw_turtle(GContext *ctx, const Turtle *turtle) {
     s_turtle_back_flipper_points[2].x = turtle->pos.x - (turtle->direction * (10 - flipper_offset));
     s_turtle_back_flipper_points[2].y = turtle->pos.y + 5;
     
-    // Update and draw front flipper path
+    // Update and draw front flipper path WITHOUT destroying and recreating
     if (s_turtle_front_flipper_path) {
-        gpath_destroy(s_turtle_front_flipper_path);
-        GPathInfo turtle_front_flipper_info = {
-            .num_points = 3,
-            .points = s_turtle_front_flipper_points,
-        };
-        s_turtle_front_flipper_path = gpath_create(&turtle_front_flipper_info);
-        if (s_turtle_front_flipper_path) {
-            gpath_draw_filled(ctx, s_turtle_front_flipper_path);
-        }
+        gpath_move_to(s_turtle_front_flipper_path, GPoint(0, 0));
+        gpath_draw_filled(ctx, s_turtle_front_flipper_path);
     }
     
-    // Update and draw back flipper path
+    // Update and draw back flipper path WITHOUT destroying and recreating
     if (s_turtle_back_flipper_path) {
-        gpath_destroy(s_turtle_back_flipper_path);
-        GPathInfo turtle_back_flipper_info = {
-            .num_points = 3,
-            .points = s_turtle_back_flipper_points,
-        };
-        s_turtle_back_flipper_path = gpath_create(&turtle_back_flipper_info);
-        if (s_turtle_back_flipper_path) {
-            gpath_draw_filled(ctx, s_turtle_back_flipper_path);
-        }
+        gpath_move_to(s_turtle_back_flipper_path, GPoint(0, 0));
+        gpath_draw_filled(ctx, s_turtle_back_flipper_path);
     }
 }
 
@@ -851,16 +810,30 @@ static bool check_collision(GPoint pos1, int radius1, GPoint pos2, int radius2) 
 
 // Calculate grid cell for a point
 static int get_grid_cell(GPoint point) {
+    // Ensure point is within bounds before calculating cell
+    if (point.x < 0) point.x = 0;
+    if (point.x >= 144) point.x = 143;  // Screen width - 1
+    if (point.y < 0) point.y = 0;
+    if (point.y >= 168) point.y = 167;  // Screen height - 1
+    
     int grid_x = point.x / GRID_CELL_WIDTH;
     int grid_y = point.y / GRID_CELL_HEIGHT;
     
-    // Clamp to grid bounds
+    // Extra bounds check to guarantee valid result
     if (grid_x < 0) grid_x = 0;
     if (grid_x >= GRID_WIDTH) grid_x = GRID_WIDTH - 1;
     if (grid_y < 0) grid_y = 0;
     if (grid_y >= GRID_HEIGHT) grid_y = GRID_HEIGHT - 1;
     
-    return grid_y * GRID_WIDTH + grid_x;
+    int cell = grid_y * GRID_WIDTH + grid_x;
+    
+    // Final sanity check
+    if (cell < 0 || cell >= GRID_CELL_COUNT) {
+        // If we somehow got here with an invalid cell, return a safe default
+        return 0;
+    }
+    
+    return cell;
 }
 
 // Update fish spatial grid positions
@@ -876,7 +849,7 @@ static void update_spatial_grid() {
             int cell = get_grid_cell(s_fish[i].pos);
             s_fish[i].grid_cell = cell;
             
-            // Bounds check to prevent buffer overflow
+            // Enhanced bounds check to prevent buffer overflow
             if (cell >= 0 && cell < GRID_CELL_COUNT && s_fish_grid_counts[cell] < MAX_FISH + MAX_BIG_FISH) {
                 s_fish_in_grid[cell][s_fish_grid_counts[cell]] = i;
                 s_fish_grid_counts[cell]++;
@@ -1056,11 +1029,9 @@ static void animation_update(void) {
         }
     }
     
-    // Update seaweed animation
+    // Update seaweed animation with overflow protection
     for (int i = 0; i < MAX_SEAWEED; i++) {
-        s_seaweed[i].offset += s_seaweed[i].speed * 100;
-        // Protect against integer overflow
-        s_seaweed[i].offset %= TRIG_MAX_ANGLE;
+        s_seaweed[i].offset = (s_seaweed[i].offset + s_seaweed[i].speed * 100) % TRIG_MAX_ANGLE;
     }
     
     // Update bubbles
@@ -1204,47 +1175,20 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 
 // Animation timer callback
 static void animation_timer_callback(void *data) {
+    // First update the animation
     animation_update();
     
-    // Use slower animation interval if battery is low
+    // Determine next interval based on battery level
     uint32_t next_interval = (s_battery_level <= LOW_BATTERY_THRESHOLD && !s_is_charging) ? 
                              ANIMATION_INTERVAL_LOW_POWER : ANIMATION_INTERVAL;
     
-    // Critical error handling - ensure animation always continues
-    uint8_t retry_count = 0;
-    const uint8_t MAX_RETRY = 3;
-    AppTimer *new_timer = NULL;
+    // Simply register the next timer - no complex retry logic needed
+    s_animation_timer = app_timer_register(next_interval, animation_timer_callback, NULL);
     
-    // Try to register a new timer with exponential backoff
-    while (retry_count < MAX_RETRY && new_timer == NULL) {
-        // Calculate backoff interval - increase interval on retries
-        uint32_t backoff_interval = next_interval * (1 << retry_count);
-        
-        // Cap maximum interval to prevent overflow
-        if (backoff_interval > 3000) {
-            backoff_interval = 3000;  // Cap at 3 seconds max
-        }
-        
-        new_timer = app_timer_register(backoff_interval, animation_timer_callback, NULL);
-        retry_count++;
-        
-        // If registered successfully, store the timer
-        if (new_timer != NULL) {
-            s_animation_timer = new_timer;
-            break;
-        }
-    }
-    
-    // Failsafe - if all retries failed, use a safe interval as last resort
-    if (new_timer == NULL) {
-        // Use a conservative fallback value (500ms) as absolute failsafe
-        s_animation_timer = app_timer_register(500, animation_timer_callback, NULL);
-        
-        // If this also fails, watchface will have jerky animations but won't freeze
-        if (s_animation_timer == NULL) {
-            // Last resort: try once more with minimum viable interval
-            s_animation_timer = app_timer_register(100, animation_timer_callback, NULL);
-        }
+    // If for some reason the timer couldn't be registered, try one more time with a fallback interval
+    if (!s_animation_timer) {
+        APP_LOG(APP_LOG_LEVEL_WARNING, "Failed to register animation timer, retrying");
+        s_animation_timer = app_timer_register(ANIMATION_INTERVAL * 2, animation_timer_callback, NULL);
     }
 }
 
@@ -1286,9 +1230,8 @@ static void battery_callback(BatteryChargeState charge_state) {
 // Update turtle
 static void update_turtle(Turtle *turtle) {
     turtle->pos.x += turtle->direction * turtle->speed;
-    turtle->animation_offset += turtle->speed * 200;
-    // Protect against integer overflow
-    turtle->animation_offset %= TRIG_MAX_ANGLE;
+    // Apply modulo immediately to prevent overflow
+    turtle->animation_offset = (turtle->animation_offset + turtle->speed * 200) % TRIG_MAX_ANGLE;
     
     // Reset turtle if it swims off screen
     if ((turtle->direction == 1 && turtle->pos.x > 144) ||
@@ -1299,9 +1242,8 @@ static void update_turtle(Turtle *turtle) {
 
 // Update jellyfish
 static void update_jellyfish(Jellyfish *jellyfish) {
-    jellyfish->tentacle_offset += jellyfish->speed * 100;
-    // Protect against integer overflow
-    jellyfish->tentacle_offset %= TRIG_MAX_ANGLE;
+    // Apply modulo immediately to prevent overflow
+    jellyfish->tentacle_offset = (jellyfish->tentacle_offset + jellyfish->speed * 100) % TRIG_MAX_ANGLE;
     
     // Update pulse animation
     jellyfish->pulse_state = (jellyfish->pulse_state + 1) % 100;
@@ -1324,9 +1266,8 @@ static void update_jellyfish(Jellyfish *jellyfish) {
 
 // Update octopus
 static void update_octopus(Octopus *octopus) {
-    octopus->tentacle_offset += octopus->speed * 50;
-    // Protect against integer overflow
-    octopus->tentacle_offset %= TRIG_MAX_ANGLE;
+    // Apply modulo immediately to prevent overflow
+    octopus->tentacle_offset = (octopus->tentacle_offset + octopus->speed * 50) % TRIG_MAX_ANGLE;
     
     // Slow movement for octopus
     if (random_in_range(0, 9) == 0) {
