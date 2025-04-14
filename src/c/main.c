@@ -84,6 +84,7 @@ static Layer *s_canvas_layer;
 static TextLayer *s_time_layer;
 static TextLayer *s_date_layer;
 static Layer *s_battery_layer;
+static AppTimer *s_animation_timer; // Add persistent timer handle
 
 // Animation elements
 #define MAX_FISH 5         // Increased for more fish
@@ -884,7 +885,6 @@ static void animation_update(void) {
         // Big fish eat small fish
         if (s_fish[i].size > 1) {  // If this is a big fish
             for (int j = 0; j < MAX_FISH; j++) {  // Check all small fish
-                if (j < 0 || j >= MAX_FISH) continue;  // Boundary check
                 if (s_fish[j].active && s_fish[j].size == 1) {
                     if (check_collision(s_fish[i].pos, 7, s_fish[j].pos, 4)) {
                         s_fish[j].active = false;  // Small fish gets eaten
@@ -915,7 +915,6 @@ static void animation_update(void) {
     
     // Check for respawning fish
     for (int i = 0; i < MAX_FISH; i++) {
-        if (i < 0 || i >= MAX_FISH) continue;  // Boundary check
         if (!s_fish[i].active && (random_in_range(0, 49) == 0)) {
             init_fish(&s_fish[i], 1);  // Reinitialize with size 1 (small fish)
         }
@@ -923,7 +922,6 @@ static void animation_update(void) {
     
     // Update seaweed animation
     for (int i = 0; i < MAX_SEAWEED; i++) {
-        if (i < 0 || i >= MAX_SEAWEED) continue;  // Boundary check
         s_seaweed[i].offset += s_seaweed[i].speed * 100;
         if (s_seaweed[i].offset >= TRIG_MAX_ANGLE) {
             s_seaweed[i].offset -= TRIG_MAX_ANGLE;
@@ -932,7 +930,6 @@ static void animation_update(void) {
     
     // Update bubbles
     for (int i = 0; i < MAX_BUBBLES; i++) {
-        if (i < 0 || i >= MAX_BUBBLES) continue;  // Boundary check
         if (s_bubbles[i].active) {
             s_bubbles[i].pos.y -= s_bubbles[i].speed;
             
@@ -952,7 +949,6 @@ static void animation_update(void) {
     
     // Update plankton
     for (int i = 0; i < MAX_PLANKTON; i++) {
-        if (i < 0 || i >= MAX_PLANKTON) continue;  // Boundary check
         if (s_plankton[i].active) {
             // Random movement for plankton
             if (random_in_range(0, 3) == 0) {
@@ -972,7 +968,6 @@ static void animation_update(void) {
     
     // Update turtle
     for (int i = 0; i < MAX_TURTLES; i++) {
-        if (i < 0 || i >= MAX_TURTLES) continue;  // Boundary check
         s_turtles[i].pos.x += s_turtles[i].direction * s_turtles[i].speed;
         s_turtles[i].animation_offset += s_turtles[i].speed * 200;
         
@@ -985,7 +980,6 @@ static void animation_update(void) {
     
     // Update jellyfish
     for (int i = 0; i < MAX_JELLYFISH; i++) {
-        if (i < 0 || i >= MAX_JELLYFISH) continue;  // Boundary check
         s_jellyfish[i].tentacle_offset += s_jellyfish[i].speed * 100;
         if (s_jellyfish[i].tentacle_offset >= TRIG_MAX_ANGLE) {
             s_jellyfish[i].tentacle_offset -= TRIG_MAX_ANGLE;
@@ -1032,7 +1026,6 @@ static void animation_update(void) {
         
         // Check for shark eating fish
         for (int i = 0; i < MAX_FISH + MAX_BIG_FISH; i++) {
-            if (i < 0 || i >= MAX_FISH + MAX_BIG_FISH) continue; // Boundary check
             if (s_fish[i].active) {
                 if (abs(s_shark.pos.x - s_fish[i].pos.x) < 20 && 
                     abs(s_shark.pos.y - s_fish[i].pos.y) < 12) {
@@ -1042,7 +1035,6 @@ static void animation_update(void) {
                     for (int b = 0; b < 5; b++) {
                         bool bubble_created = false;
                         for (int k = 0; k < MAX_BUBBLES; k++) {
-                            if (k < 0 || k >= MAX_BUBBLES) continue; // Boundary check
                             if (!s_bubbles[k].active) {
                                 s_bubbles[k].pos = s_fish[i].pos;
                                 s_bubbles[k].size = random_in_range(1, 3);
@@ -1086,7 +1078,9 @@ static void animation_update(void) {
     // Update clam
     update_clam(&s_clam);
     
-    layer_mark_dirty(s_canvas_layer);
+    if (s_canvas_layer) {
+        layer_mark_dirty(s_canvas_layer);
+    }
 }
 
 // Update time display
@@ -1121,7 +1115,9 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
 // Animation timer callback
 static void animation_timer_callback(void *data) {
     animation_update();
-    app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
+    
+    // Register next timer and store the handle
+    s_animation_timer = app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
 }
 
 // Update crab animation
@@ -1267,21 +1263,45 @@ static void main_window_load(Window *window) {
     init_clam(&s_clam);
     
     // Start animation timer
-    app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
+    s_animation_timer = app_timer_register(ANIMATION_INTERVAL, animation_timer_callback, NULL);
     
     // Update time immediately
     update_time();
 }
 
 static void main_window_unload(Window *window) {
-    layer_destroy(s_canvas_layer);
-    text_layer_destroy(s_time_layer);
-    text_layer_destroy(s_date_layer);
-    layer_destroy(s_battery_layer);
+    // Cancel the animation timer if it exists
+    if (s_animation_timer) {
+        app_timer_cancel(s_animation_timer);
+        s_animation_timer = NULL;
+    }
+    
+    if (s_canvas_layer) {
+        layer_destroy(s_canvas_layer);
+        s_canvas_layer = NULL;
+    }
+    
+    if (s_time_layer) {
+        text_layer_destroy(s_time_layer);
+        s_time_layer = NULL;
+    }
+    
+    if (s_date_layer) {
+        text_layer_destroy(s_date_layer);
+        s_date_layer = NULL;
+    }
+    
+    if (s_battery_layer) {
+        layer_destroy(s_battery_layer);
+        s_battery_layer = NULL;
+    }
 }
 
 static void init(void) {
     srand(time(NULL));  // Initialize random seed
+    
+    // Initialize timer handle to NULL
+    s_animation_timer = NULL;
     
     // Create main window
     s_main_window = window_create();
@@ -1305,9 +1325,17 @@ static void init(void) {
 }
 
 static void deinit(void) {
+    // Cancel the animation timer if it exists
+    if (s_animation_timer) {
+        app_timer_cancel(s_animation_timer);
+        s_animation_timer = NULL;
+    }
+    
     if (s_main_window) {
         window_destroy(s_main_window);
+        s_main_window = NULL;
     }
+    
     tick_timer_service_unsubscribe();
     battery_state_service_unsubscribe();  // Unsubscribe from battery service
 }
